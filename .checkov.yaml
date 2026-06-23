@@ -1,0 +1,11 @@
+@"
+directory:
+  - terraform
+output:
+  - json
+soft-fail: false
+compact: true
+skip-check:
+  - CKV_AWS_144
+  - CKV_AWS_145
+"@ | Out-File -FilePath .checkov.yaml -Encoding utf8
