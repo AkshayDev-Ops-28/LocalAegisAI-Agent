@@ -1,6 +1,7 @@
 ﻿directory:
   - terraform
-output: json
+output:
+  - json
 soft-fail: false
 compact: true
 skip-check:
