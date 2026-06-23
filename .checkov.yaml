@@ -1,4 +1,4 @@
-﻿directory:
+directory:
   - terraform
 output:
   - json
