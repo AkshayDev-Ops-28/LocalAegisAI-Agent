@@ -1,4 +1,4 @@
-@"
+
 # LocalAegis-AI
 ### Autonomous Policy-as-Code & Self-Healing Local Cloud Infrastructure
 
@@ -26,4 +26,3 @@ reports/      → Checkov JSON scan output
 
 ## Status
 V1 INIT — Day 1
-"@ | Out-File -FilePath README.md -Encoding utf8
