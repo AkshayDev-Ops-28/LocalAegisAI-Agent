@@ -39,13 +39,18 @@ jobs:
       - name: Install Checkov
         run: pip install checkov==3.3.1
 
-      - name: Run Checkov scan on terraform/
+      - name: Create output directories
         run: |
-          checkov -d terraform/ \
-            --output json \
-            --output-file reports/scan_report.json \
-            --soft-fail
-        continue-on-error: true
+          mkdir -p reports
+          mkdir -p logs
+
+      - name: Debug workspace before pipeline
+        run: |
+          echo "reports/ contents:"
+          ls -la reports/ || echo "reports/ is empty"
+          echo "logs/ contents:"
+          ls -la logs/ || echo "logs/ is empty"
+
 
       - name: Run LocalAegis-AI autonomous pipeline
         run: python agent/pipeline.py
