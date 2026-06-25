@@ -197,6 +197,14 @@ def main():
     violations_count = 0
     remediation_ok   = False
     deploy_ok        = False
+    
+    # Create a default validation report structure
+    validation_report = {
+        "passed": False,
+        "violations": [],
+        "error": None,
+        "remediation_attempted": False
+    }
 
     try:
         log("═" * 60)
@@ -211,51 +219,63 @@ def main():
 
         if violations_count == 0:
             log("✅ No violations — skipping remediation")
+            validation_report["passed"] = True
             deploy_ok = True
 
         else:
             for v in violations:
                 log(f"  ⚠️  {v['check_id']} — {v['check_name']}")
 
-            # PHASE 2 — Remediate
-            log("🤖 PHASE 2: Sending to Groq LLM for remediation...")
-            hcl = remediate(violations)
-            log("✅ LLM returned remediated HCL")
+            try:
+                # PHASE 2 — Remediate
+                log("🤖 PHASE 2: Sending to Groq LLM for remediation...")
+                hcl = remediate(violations)
+                log("✅ LLM returned remediated HCL")
+                validation_report["remediation_attempted"] = True
 
-            # PHASE 3 — Validate
-            log("🔎 PHASE 3: Validating LLM output with Checkov...")
-            result = validate_tf(hcl)
+                # PHASE 3 — Validate
+                log("🔎 PHASE 3: Validating LLM output with Checkov...")
+                result = validate_tf(hcl)
+                validation_report.update(result)
 
-            with open(VALIDATION_REPORT_PATH, "w", encoding="utf-8") as f:
-                json.dump(result, f, indent=2)
-            log(f"📄 Validation report written to {VALIDATION_REPORT_PATH}")
-
-            if result["passed"]:
-                log("✅ Validation passed — 0 violations in LLM output")
-                remediation_ok = True
-            else:
-                log(f"❌ Validation failed — {len(result['violations'])} violation(s) remain")
-                for v in result["violations"]:
-                    log(f"  ⚠️  {v['check_id']} — {v['check_name']}")
-                log("🛑 Halting pipeline — unsafe to deploy")
-
-            # PHASE 4 — Deploy
-            if remediation_ok:
-                log("🚀 PHASE 4: Deploying to LocalStack...")
-                wipe_localstack_buckets()
-                deploy_hcl = strip_unsupported_resources(hcl)
-                log("⚠️  Lifecycle config stripped for LocalStack community compatibility")
-                deploy_ok = deploy_to_localstack(deploy_hcl)
-                if deploy_ok:
-                    log("✅ Deployment successful")
-                    verify_localstack()
+                if result["passed"]:
+                    log("✅ Validation passed — 0 violations in LLM output")
+                    remediation_ok = True
                 else:
-                    log("❌ Deployment failed")
+                    log(f"❌ Validation failed — {len(result['violations'])} violation(s) remain")
+                    for v in result["violations"]:
+                        log(f"  ⚠️  {v['check_id']} — {v['check_name']}")
+                    log("🛑 Halting pipeline — unsafe to deploy")
+
+                # PHASE 4 — Deploy
+                if remediation_ok:
+                    log("🚀 PHASE 4: Deploying to LocalStack...")
+                    wipe_localstack_buckets()
+                    deploy_hcl = strip_unsupported_resources(hcl)
+                    log("⚠️  Lifecycle configuration stripped for LocalStack community compatibility")
+                    deploy_ok = deploy_to_localstack(deploy_hcl)
+                    if deploy_ok:
+                        log("✅ Deployment successful")
+                        verify_localstack()
+                    else:
+                        log("❌ Deployment failed")
+
+            except Exception as remediation_error:
+                log(f"💥 Remediation phase failed: {remediation_error}")
+                validation_report["error"] = str(remediation_error)
+                validation_report["violations"] = violations
+                # Don't re-raise; write report and continue to finally block
 
     except Exception as e:
         log(f"💥 Unhandled exception: {e}")
+        validation_report["error"] = str(e)
 
     finally:
+        # ✅ CRITICAL — Always write validation report
+        with open(VALIDATION_REPORT_PATH, "w", encoding="utf-8") as f:
+            json.dump(validation_report, f, indent=2)
+        log(f"📄 Validation report written to {VALIDATION_REPORT_PATH}")
+        
         duration = round(time.time() - start, 2)
         log(f"⏱️  Pipeline completed in {duration}s")
         log("═" * 60)
