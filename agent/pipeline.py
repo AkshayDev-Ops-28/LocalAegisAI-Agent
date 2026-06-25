@@ -74,13 +74,44 @@ def run_checkov_scan():
 import re
 
 def strip_unsupported_resources(hcl: str) -> str:
-    hcl = re.sub(
-        r'resource\s+"aws_s3_bucket_lifecycle_configuration"\s+"[^"]+"\s*\{[^}]*(?:\{[^}]*\}[^}]*)*\}',
-        '',
-        hcl,
-        flags=re.DOTALL
-    )
-    return hcl.strip()
+    """
+    Removes resource blocks that LocalStack community does not support.
+    Uses a brace-depth parser instead of regex to handle nested blocks correctly.
+    """
+    skip_types = {"aws_s3_bucket_lifecycle_configuration"}
+    lines = hcl.splitlines()
+    result = []
+    skip = False
+    depth = 0
+
+    for line in lines:
+        stripped = line.strip()
+
+        if not skip:
+            # Check if this line opens a resource block we want to skip
+            is_skip_block = False
+            for rt in skip_types:
+                if stripped.startswith(f'resource "{rt}"'):
+                    is_skip_block = True
+                    break
+
+            if is_skip_block:
+                skip = True
+                depth = 0
+                # Count any opening braces on this line
+                depth += stripped.count("{") - stripped.count("}")
+            else:
+                result.append(line)
+                continue
+        else:
+            # We are inside a block being skipped — track brace depth
+            depth += stripped.count("{") - stripped.count("}")
+            if depth <= 0:
+                # Block is fully closed — stop skipping
+                skip = False
+                depth = 0
+
+    return "\n".join(result).strip()
 
 
 # ── Deploy ────────────────────────────────────────────────────────────────────
@@ -168,7 +199,7 @@ def main():
                 deploy_hcl = strip_unsupported_resources(hcl)
                 log("⚠️  Lifecycle configuration stripped for LocalStack community compatibility")
                 deploy_ok = deploy_to_localstack(deploy_hcl)
-                if deploy_hcl:
+                if deploy_ok:
                     log("✅ Deployment successful")
                     verify_localstack()
                 else:
