@@ -1,6 +1,9 @@
 import os
+import re
 import time
+import shutil
 import subprocess
+import tempfile
 import json
 import logging
 from logging.handlers import RotatingFileHandler
@@ -20,20 +23,21 @@ BASE_DIR      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TERRAFORM_DIR = os.path.join(BASE_DIR, "terraform")
 DEPLOY_DIR    = os.path.join(TERRAFORM_DIR, "deploy")
 REPORT_PATH   = os.path.join(BASE_DIR, "reports", "scan_report.json")
+VALIDATION_REPORT_PATH = os.path.join(BASE_DIR, "reports", "validation_report.json")
 LOG_PATH      = os.path.join(BASE_DIR, "logs", "pipeline.log")
-CHECKOV_CMD   = "C:\\Users\\Akshay\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\checkov.cmd"
+CHECKOV_CMD   = shutil.which("checkov") or "checkov"
 PUSHGATEWAY   = "localhost:9091"
 JOB_NAME      = "localaegis_pipeline"
 
-# ── Logger ────────────────────────────────────────────────────────────────────
-import logging
-from logging.handlers import RotatingFileHandler
+# ── Directory bootstrap (CI runners start with empty workspace) ───────────────
+os.makedirs(os.path.join(BASE_DIR, "logs"),    exist_ok=True)
+os.makedirs(os.path.join(BASE_DIR, "reports"), exist_ok=True)
 
 # ── Logger ────────────────────────────────────────────────────────────────────
 _handler = RotatingFileHandler(
     LOG_PATH,
-    maxBytes=500_000,   # 500 KB per file
-    backupCount=3,      # keep pipeline.log, pipeline.log.1, pipeline.log.2, pipeline.log.3
+    maxBytes=500_000,
+    backupCount=3,
     encoding="utf-8"
 )
 _handler.setFormatter(logging.Formatter("%(message)s"))
@@ -72,11 +76,19 @@ def push_metrics(violations, remediation_ok, deploy_ok, duration):
         push_to_gateway(PUSHGATEWAY, job=JOB_NAME, registry=registry)
         log("✅ Metrics pushed to Pushgateway")
     except Exception as e:
-        log(f"⚠️  Metrics push failed: {e}")
+        log(f"⚠️  Metrics push failed (expected in CI — no Pushgateway): {e}")
 
 # ── Checkov scan ──────────────────────────────────────────────────────────────
 def run_checkov_scan():
     log("📋 Running Checkov scan...")
+
+    # Remove any stale path at REPORT_PATH — guards against directory collision
+    if os.path.isdir(REPORT_PATH):
+        shutil.rmtree(REPORT_PATH)
+        log(f"⚠️  Removed stale directory at {REPORT_PATH}")
+    elif os.path.isfile(REPORT_PATH):
+        os.remove(REPORT_PATH)
+
     result = subprocess.run(
         [CHECKOV_CMD, "-d", TERRAFORM_DIR, "-o", "json",
          "--quiet", "--output-file", REPORT_PATH],
@@ -84,59 +96,71 @@ def run_checkov_scan():
         text=True,
         encoding="utf-8"
     )
-    # Checkov returns non-zero exit code when violations found — that's expected
-    if not os.path.exists(REPORT_PATH):
+
+    if os.path.isdir(REPORT_PATH):
+        # Checkov created a directory instead of a file — extract JSON from stdout
+        log("⚠️  Checkov wrote a directory instead of file — falling back to stdout")
+        shutil.rmtree(REPORT_PATH)
+        with open(REPORT_PATH, "w", encoding="utf-8") as f:
+            f.write(result.stdout)
+
+    if not os.path.isfile(REPORT_PATH):
         raise RuntimeError(f"Checkov did not produce a report at {REPORT_PATH}")
+
     log(f"✅ Checkov scan complete — report written to {REPORT_PATH}")
 
-import re
-
+    
+# ── Strip unsupported LocalStack community resources ──────────────────────────
 def strip_unsupported_resources(hcl: str) -> str:
     """
     Removes resource blocks that LocalStack community does not support.
-    Uses a brace-depth parser instead of regex to handle nested blocks correctly.
+    Uses a brace-depth parser — never regex — to handle nested blocks correctly.
     """
     skip_types = {"aws_s3_bucket_lifecycle_configuration"}
     lines = hcl.splitlines()
     result = []
-    skip = False
+    skip  = False
     depth = 0
 
     for line in lines:
         stripped = line.strip()
 
         if not skip:
-            # Check if this line opens a resource block we want to skip
-            is_skip_block = False
-            for rt in skip_types:
-                if stripped.startswith(f'resource "{rt}"'):
-                    is_skip_block = True
-                    break
-
+            is_skip_block = any(
+                stripped.startswith(f'resource "{rt}"') for rt in skip_types
+            )
             if is_skip_block:
-                skip = True
-                depth = 0
-                # Count any opening braces on this line
-                depth += stripped.count("{") - stripped.count("}")
+                skip  = True
+                depth = stripped.count("{") - stripped.count("}")
             else:
                 result.append(line)
-                continue
         else:
-            # We are inside a block being skipped — track brace depth
             depth += stripped.count("{") - stripped.count("}")
             if depth <= 0:
-                # Block is fully closed — stop skipping
-                skip = False
+                skip  = False
                 depth = 0
 
     return "\n".join(result).strip()
 
+# ── Wipe ──────────────────────────────────────────────────────────────────────
+def wipe_localstack_buckets():
+    s3 = boto3.client(
+        "s3",
+        endpoint_url="http://localhost:4566",
+        aws_access_key_id="test",
+        aws_secret_access_key="test",
+        region_name="us-east-1"
+    )
+    buckets = [b["Name"] for b in s3.list_buckets().get("Buckets", [])]
+    for bucket in buckets:
+        objects = s3.list_objects_v2(Bucket=bucket).get("Contents", [])
+        for obj in objects:
+            s3.delete_object(Bucket=bucket, Key=obj["Key"])
+        s3.delete_bucket(Bucket=bucket)
+        log(f"🗑️  Wiped bucket: {bucket}")
 
 # ── Deploy ────────────────────────────────────────────────────────────────────
 def deploy_to_localstack(hcl: str) -> bool:
-    import tempfile
-    import shutil
-
     provider_src = os.path.join(DEPLOY_DIR, "provider.tf")
     tmp = tempfile.mkdtemp()
     try:
@@ -154,26 +178,6 @@ def deploy_to_localstack(hcl: str) -> bool:
         return True
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-
-
-# ── Wipe ──────────────────────────────────────────────────────────────────────
-def wipe_localstack_buckets():
-    s3 = boto3.client(
-        "s3",
-        endpoint_url="http://localhost:4566",
-        aws_access_key_id="test",
-        aws_secret_access_key="test",
-        region_name="us-east-1"
-    )
-    buckets = [b["Name"] for b in s3.list_buckets().get("Buckets", [])]
-    for bucket in buckets:
-        # Must delete all objects before deleting bucket
-        objects = s3.list_objects_v2(Bucket=bucket).get("Contents", [])
-        for obj in objects:
-            s3.delete_object(Bucket=bucket, Key=obj["Key"])
-        s3.delete_bucket(Bucket=bucket)
-        log(f"🗑️  Wiped bucket: {bucket}")
-
 
 # ── Verify ────────────────────────────────────────────────────────────────────
 def verify_localstack():
@@ -193,6 +197,14 @@ def main():
     violations_count = 0
     remediation_ok   = False
     deploy_ok        = False
+    
+    # Create a default validation report structure
+    validation_report = {
+        "passed": False,
+        "violations": [],
+        "error": None,
+        "remediation_attempted": False
+    }
 
     try:
         log("═" * 60)
@@ -201,60 +213,69 @@ def main():
 
         # PHASE 1 — Scan
         run_checkov_scan()
-        violations = load_violations(REPORT_PATH)
+        violations       = load_violations(REPORT_PATH)
         violations_count = len(violations)
         log(f"🔍 {violations_count} violation(s) found")
 
         if violations_count == 0:
             log("✅ No violations — skipping remediation")
+            validation_report["passed"] = True
             deploy_ok = True
 
         else:
             for v in violations:
                 log(f"  ⚠️  {v['check_id']} — {v['check_name']}")
 
-            # PHASE 2 — Remediate
-            log("🤖 PHASE 2: Sending to Groq LLM for remediation...")
-            hcl = remediate(violations)
-            log("✅ LLM returned remediated HCL")
+            try:
+                # PHASE 2 — Remediate
+                log("🤖 PHASE 2: Sending to Groq LLM for remediation...")
+                hcl = remediate(violations)
+                log("✅ LLM returned remediated HCL")
+                validation_report["remediation_attempted"] = True
 
-            # PHASE 3 — Validate
-            log("🔎 PHASE 3: Validating LLM output with Checkov...")
-            result = validate_tf(hcl)
+                # PHASE 3 — Validate
+                log("🔎 PHASE 3: Validating LLM output with Checkov...")
+                result = validate_tf(hcl)
+                validation_report.update(result)
 
-            import json, os
-
-            validation_report_path = os.path.join(os.path.dirname(__file__), "..", "reports", "validation_report.json")
-            with open(validation_report_path, "w", encoding="utf-8") as f:
-                json.dump(result, f, indent=2)
-            print(f"[PIPELINE] Validation report written to reports/validation_report.json")
-
-            if result["passed"]:
-                log("✅ Validation passed — 0 violations in LLM output")
-                remediation_ok = True
-            else:
-                log(f"❌ Validation failed — {len(result['violations'])} violation(s) remain")
-                for v in result["violations"]:
-                    log(f"  ⚠️  {v['check_id']} — {v['check_name']}")
-                log("🛑 Halting pipeline — unsafe to deploy")
-
-            # PHASE 4 — Deploy
-            if remediation_ok:
-                log("🚀 PHASE 4: Deploying to LocalStack...")
-                wipe_localstack_buckets()   
-                deploy_hcl = strip_unsupported_resources(hcl)
-                log("⚠️  Lifecycle configuration stripped for LocalStack community compatibility")
-                deploy_ok = deploy_to_localstack(deploy_hcl)
-                if deploy_ok:
-                    log("✅ Deployment successful")
-                    verify_localstack()
+                if result["passed"]:
+                    log("✅ Validation passed — 0 violations in LLM output")
+                    remediation_ok = True
                 else:
-                    log("❌ Deployment failed")
+                    log(f"❌ Validation failed — {len(result['violations'])} violation(s) remain")
+                    for v in result["violations"]:
+                        log(f"  ⚠️  {v['check_id']} — {v['check_name']}")
+                    log("🛑 Halting pipeline — unsafe to deploy")
+
+                # PHASE 4 — Deploy
+                if remediation_ok:
+                    log("🚀 PHASE 4: Deploying to LocalStack...")
+                    wipe_localstack_buckets()
+                    deploy_hcl = strip_unsupported_resources(hcl)
+                    log("⚠️  Lifecycle configuration stripped for LocalStack community compatibility")
+                    deploy_ok = deploy_to_localstack(deploy_hcl)
+                    if deploy_ok:
+                        log("✅ Deployment successful")
+                        verify_localstack()
+                    else:
+                        log("❌ Deployment failed")
+
+            except Exception as remediation_error:
+                log(f"💥 Remediation phase failed: {remediation_error}")
+                validation_report["error"] = str(remediation_error)
+                validation_report["violations"] = violations
+                # Don't re-raise; write report and continue to finally block
 
     except Exception as e:
         log(f"💥 Unhandled exception: {e}")
+        validation_report["error"] = str(e)
 
     finally:
+        # ✅ CRITICAL — Always write validation report
+        with open(VALIDATION_REPORT_PATH, "w", encoding="utf-8") as f:
+            json.dump(validation_report, f, indent=2)
+        log(f"📄 Validation report written to {VALIDATION_REPORT_PATH}")
+        
         duration = round(time.time() - start, 2)
         log(f"⏱️  Pipeline completed in {duration}s")
         log("═" * 60)
