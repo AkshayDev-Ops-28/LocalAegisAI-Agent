@@ -1,8 +1,11 @@
 import os
 import time
 import subprocess
-import boto3
+import json
+import logging
+from logging.handlers import RotatingFileHandler
 
+import boto3
 from dotenv import load_dotenv
 from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 
@@ -23,12 +26,27 @@ PUSHGATEWAY   = "localhost:9091"
 JOB_NAME      = "localaegis_pipeline"
 
 # ── Logger ────────────────────────────────────────────────────────────────────
+import logging
+from logging.handlers import RotatingFileHandler
+
+# ── Logger ────────────────────────────────────────────────────────────────────
+_handler = RotatingFileHandler(
+    LOG_PATH,
+    maxBytes=500_000,   # 500 KB per file
+    backupCount=3,      # keep pipeline.log, pipeline.log.1, pipeline.log.2, pipeline.log.3
+    encoding="utf-8"
+)
+_handler.setFormatter(logging.Formatter("%(message)s"))
+
+_logger = logging.getLogger("localaegis")
+_logger.setLevel(logging.INFO)
+_logger.addHandler(_handler)
+
 def log(msg):
     ts = time.strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{ts}] {msg}"
     print(line)
-    with open(LOG_PATH, "a", encoding="utf-8") as f:
-        f.write(line + "\n")
+    _logger.info(line)
 
 # ── Metrics push ──────────────────────────────────────────────────────────────
 def push_metrics(violations, remediation_ok, deploy_ok, duration):
@@ -137,6 +155,26 @@ def deploy_to_localstack(hcl: str) -> bool:
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
+
+# ── Wipe ──────────────────────────────────────────────────────────────────────
+def wipe_localstack_buckets():
+    s3 = boto3.client(
+        "s3",
+        endpoint_url="http://localhost:4566",
+        aws_access_key_id="test",
+        aws_secret_access_key="test",
+        region_name="us-east-1"
+    )
+    buckets = [b["Name"] for b in s3.list_buckets().get("Buckets", [])]
+    for bucket in buckets:
+        # Must delete all objects before deleting bucket
+        objects = s3.list_objects_v2(Bucket=bucket).get("Contents", [])
+        for obj in objects:
+            s3.delete_object(Bucket=bucket, Key=obj["Key"])
+        s3.delete_bucket(Bucket=bucket)
+        log(f"🗑️  Wiped bucket: {bucket}")
+
+
 # ── Verify ────────────────────────────────────────────────────────────────────
 def verify_localstack():
     s3 = boto3.client(
@@ -184,6 +222,13 @@ def main():
             log("🔎 PHASE 3: Validating LLM output with Checkov...")
             result = validate_tf(hcl)
 
+            import json, os
+
+            validation_report_path = os.path.join(os.path.dirname(__file__), "..", "reports", "validation_report.json")
+            with open(validation_report_path, "w", encoding="utf-8") as f:
+                json.dump(result, f, indent=2)
+            print(f"[PIPELINE] Validation report written to reports/validation_report.json")
+
             if result["passed"]:
                 log("✅ Validation passed — 0 violations in LLM output")
                 remediation_ok = True
@@ -196,6 +241,7 @@ def main():
             # PHASE 4 — Deploy
             if remediation_ok:
                 log("🚀 PHASE 4: Deploying to LocalStack...")
+                wipe_localstack_buckets()   
                 deploy_hcl = strip_unsupported_resources(hcl)
                 log("⚠️  Lifecycle configuration stripped for LocalStack community compatibility")
                 deploy_ok = deploy_to_localstack(deploy_hcl)

@@ -1,0 +1,83 @@
+name: LocalAegis-AI Security Pipeline
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'terraform/**'
+      - 'agent/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+      - 'agent/**'
+
+jobs:
+  security-pipeline:
+    name: Scan → Remediate → Validate → Report
+    runs-on: ubuntu-latest
+
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Checkov
+        run: pip install checkov==3.3.1
+
+      - name: Run Checkov scan on terraform/
+        run: |
+          checkov -d terraform/ \
+            --output json \
+            --output-file reports/scan_report.json \
+            --soft-fail
+        continue-on-error: true
+
+      - name: Run LocalAegis-AI autonomous pipeline
+        run: python agent/pipeline.py
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
+      - name: Validate remediated Terraform — hard fail on violations
+        run: |
+          python - <<'EOF'
+          import json, sys
+          try:
+              with open("reports/validation_report.json", "r", encoding="utf-8") as f:
+                  report = json.load(f)
+              if not report.get("passed", False):
+                  violations = report.get("violations", [])
+                  print(f"HARD FAIL: {len(violations)} violation(s) survived remediation.")
+                  for v in violations:
+                      print(f"  - {v.get('check_id')}: {v.get('check_name')}")
+                  sys.exit(1)
+              else:
+                  print("Validation PASSED — remediated Terraform is compliant.")
+          except FileNotFoundError:
+              print("HARD FAIL: validation_report.json not found. Pipeline did not complete.")
+              sys.exit(1)
+          EOF
+
+      - name: Upload scan and validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: localaegis-reports-${{ github.run_number }}
+          path: |
+            reports/scan_report.json
+            reports/validation_report.json
+          retention-days: 30
