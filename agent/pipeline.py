@@ -31,6 +31,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 
 # ── Logger ────────────────────────────────────────────────────────────────────
+os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
 _handler = RotatingFileHandler(
     LOG_PATH,
     maxBytes=500_000,   # 500 KB per file
