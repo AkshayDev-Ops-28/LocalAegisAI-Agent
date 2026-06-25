@@ -44,6 +44,14 @@ jobs:
           mkdir -p reports
           mkdir -p logs
 
+      - name: Debug workspace before pipeline
+        run: |
+          echo "reports/ contents:"
+          ls -la reports/ || echo "reports/ is empty"
+          echo "logs/ contents:"
+          ls -la logs/ || echo "logs/ is empty"
+
+
       - name: Run LocalAegis-AI autonomous pipeline
         run: python agent/pipeline.py
         env:

@@ -81,17 +81,35 @@ def push_metrics(violations, remediation_ok, deploy_ok, duration):
 # ── Checkov scan ──────────────────────────────────────────────────────────────
 def run_checkov_scan():
     log("📋 Running Checkov scan...")
-    subprocess.run(
+
+    # Remove any stale path at REPORT_PATH — guards against directory collision
+    if os.path.isdir(REPORT_PATH):
+        shutil.rmtree(REPORT_PATH)
+        log(f"⚠️  Removed stale directory at {REPORT_PATH}")
+    elif os.path.isfile(REPORT_PATH):
+        os.remove(REPORT_PATH)
+
+    result = subprocess.run(
         [CHECKOV_CMD, "-d", TERRAFORM_DIR, "-o", "json",
          "--quiet", "--output-file", REPORT_PATH],
         capture_output=True,
         text=True,
         encoding="utf-8"
     )
-    if not os.path.exists(REPORT_PATH):
+
+    if os.path.isdir(REPORT_PATH):
+        # Checkov created a directory instead of a file — extract JSON from stdout
+        log("⚠️  Checkov wrote a directory instead of file — falling back to stdout")
+        shutil.rmtree(REPORT_PATH)
+        with open(REPORT_PATH, "w", encoding="utf-8") as f:
+            f.write(result.stdout)
+
+    if not os.path.isfile(REPORT_PATH):
         raise RuntimeError(f"Checkov did not produce a report at {REPORT_PATH}")
+
     log(f"✅ Checkov scan complete — report written to {REPORT_PATH}")
 
+    
 # ── Strip unsupported LocalStack community resources ──────────────────────────
 def strip_unsupported_resources(hcl: str) -> str:
     """
