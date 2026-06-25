@@ -12,6 +12,7 @@ from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 from scanner import load_violations
 from remediator import remediate
 from validator import validate_tf
+import shutil
 
 load_dotenv()
 
@@ -21,7 +22,7 @@ TERRAFORM_DIR = os.path.join(BASE_DIR, "terraform")
 DEPLOY_DIR    = os.path.join(TERRAFORM_DIR, "deploy")
 REPORT_PATH   = os.path.join(BASE_DIR, "reports", "scan_report.json")
 LOG_PATH      = os.path.join(BASE_DIR, "logs", "pipeline.log")
-CHECKOV_CMD   = "C:\\Users\\Akshay\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\checkov.cmd"
+CHECKOV_CMD   = shutil.which("checkov") or "checkov"
 PUSHGATEWAY   = "localhost:9091"
 JOB_NAME      = "localaegis_pipeline"
 

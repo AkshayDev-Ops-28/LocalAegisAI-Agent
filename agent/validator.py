@@ -3,7 +3,8 @@ import json
 import tempfile
 import subprocess
 
-CHECKOV_CMD = "C:\\Users\\Akshay\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\checkov.cmd"
+import shutil
+CHECKOV_CMD = shutil.which("checkov") or "checkov"
 
 def validate_tf(tf_code: str) -> dict:
     """
