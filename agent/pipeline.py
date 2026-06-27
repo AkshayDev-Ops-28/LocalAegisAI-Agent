@@ -1,3 +1,4 @@
+
 import os
 import sys
 import re
@@ -8,7 +9,11 @@ import tempfile
 import json
 import logging
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
+
+# ── Path bootstrap — always runs, required for BASE_DIR ──────────────────────
+_BASE_DIR_EARLY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _BASE_DIR_EARLY not in sys.path:
+    sys.path.insert(0, _BASE_DIR_EARLY)
 
 import boto3
 from dotenv import load_dotenv
@@ -22,6 +27,14 @@ load_dotenv()
 
 # ── CI detection ──────────────────────────────────────────────────────────────
 _IS_CI = os.getenv("CI") == "true"
+
+# ── Dashboard imports (local runs only) ───────────────────────────────────────
+if not _IS_CI:
+    import dashboard.serve as serve
+    import dashboard.status_writer as status_writer
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+BASE_DIR               = _BASE_DIR_EARLY
 
 # ── Dashboard imports (local runs only) ───────────────────────────────────────
 if not _IS_CI:
