@@ -7,12 +7,16 @@ on:
     paths:
       - 'terraform/**'
       - 'agent/**'
+      - 'dashboard/**'
+      - '.github/workflows/**'
   pull_request:
     branches:
       - main
     paths:
       - 'terraform/**'
       - 'agent/**'
+      - 'dashboard/**'
+      - '.github/workflows/**'
 
 jobs:
   security-pipeline:
