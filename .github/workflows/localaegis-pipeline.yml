@@ -8,6 +8,7 @@ on:
       - 'terraform/**'
       - 'agent/**'
       - 'dashboard/**'
+      - '.github/workflows/**'
   pull_request:
     branches:
       - main
@@ -15,6 +16,7 @@ on:
       - 'terraform/**'
       - 'agent/**'
       - 'dashboard/**'
+      - '.github/workflows/**'
 
 jobs:
   security-pipeline:
