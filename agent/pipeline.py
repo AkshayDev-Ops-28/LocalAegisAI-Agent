@@ -1,4 +1,5 @@
 import os
+import sys
 import re
 import time
 import shutil
@@ -7,6 +8,7 @@ import tempfile
 import json
 import logging
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 import boto3
 from dotenv import load_dotenv
@@ -33,6 +35,16 @@ JOB_NAME      = "localaegis_pipeline"
 os.makedirs(os.path.join(BASE_DIR, "logs"),    exist_ok=True)
 os.makedirs(os.path.join(BASE_DIR, "reports"), exist_ok=True)
 
+# ── Dashboard — local runs only ───────────────────────────────────────────────
+_IS_CI = os.getenv("CI") == "true"
+
+if not _IS_CI:
+    _dashboard_dir = str(Path(BASE_DIR) / "dashboard")
+    if _dashboard_dir not in sys.path:
+        sys.path.insert(0, _dashboard_dir)
+    import serve
+    import status_writer
+
 # ── Logger ────────────────────────────────────────────────────────────────────
 _handler = RotatingFileHandler(
     LOG_PATH,
@@ -51,6 +63,8 @@ def log(msg):
     line = f"[{ts}] {msg}"
     print(line)
     _logger.info(line)
+    if not _IS_CI:
+        status_writer.log(line)
 
 # ── Metrics push ──────────────────────────────────────────────────────────────
 def push_metrics(violations, remediation_ok, deploy_ok, duration):
@@ -109,7 +123,7 @@ def run_checkov_scan():
 
     log(f"✅ Checkov scan complete — report written to {REPORT_PATH}")
 
-    
+
 # ── Strip unsupported LocalStack community resources ──────────────────────────
 def strip_unsupported_resources(hcl: str) -> str:
     """
@@ -197,7 +211,7 @@ def main():
     violations_count = 0
     remediation_ok   = False
     deploy_ok        = False
-    
+
     # Create a default validation report structure
     validation_report = {
         "passed": False,
@@ -206,16 +220,29 @@ def main():
         "remediation_attempted": False
     }
 
+    # ── Launch dashboard (local only) ─────────────────────────────────────────
+    if not _IS_CI:
+        status_writer.init()
+        url = serve.launch()
+        log(f"🖥️  Dashboard: {url}")
+        time.sleep(0.8)  # give browser a moment before pipeline starts
+
     try:
         log("═" * 60)
         log("🚀 LocalAegis-AI Pipeline — START")
         log("═" * 60)
 
         # PHASE 1 — Scan
+        if not _IS_CI:
+            status_writer.stage_scan()
+
         run_checkov_scan()
         violations       = load_violations(REPORT_PATH)
         violations_count = len(violations)
         log(f"🔍 {violations_count} violation(s) found")
+
+        if not _IS_CI:
+            status_writer.stage_scan_done(violations_count)
 
         if violations_count == 0:
             log("✅ No violations — skipping remediation")
@@ -229,20 +256,34 @@ def main():
             try:
                 # PHASE 2 — Remediate
                 log("🤖 PHASE 2: Sending to Groq LLM for remediation...")
+                if not _IS_CI:
+                    status_writer.stage_remediate()
+
                 hcl = remediate(violations)
                 log("✅ LLM returned remediated HCL")
                 validation_report["remediation_attempted"] = True
 
+                if not _IS_CI:
+                    status_writer.stage_remediate_done()
+
                 # PHASE 3 — Validate
                 log("🔎 PHASE 3: Validating LLM output with Checkov...")
+                if not _IS_CI:
+                    status_writer.stage_validate()
+
                 result = validate_tf(hcl)
                 validation_report.update(result)
+
+                violations_after = len(result.get("violations", []))
+
+                if not _IS_CI:
+                    status_writer.stage_validate_done(violations_after)
 
                 if result["passed"]:
                     log("✅ Validation passed — 0 violations in LLM output")
                     remediation_ok = True
                 else:
-                    log(f"❌ Validation failed — {len(result['violations'])} violation(s) remain")
+                    log(f"❌ Validation failed — {violations_after} violation(s) remain")
                     for v in result["violations"]:
                         log(f"  ⚠️  {v['check_id']} — {v['check_name']}")
                     log("🛑 Halting pipeline — unsafe to deploy")
@@ -250,10 +291,17 @@ def main():
                 # PHASE 4 — Deploy
                 if remediation_ok:
                     log("🚀 PHASE 4: Deploying to LocalStack...")
+                    if not _IS_CI:
+                        status_writer.stage_deploy()
+
                     wipe_localstack_buckets()
                     deploy_hcl = strip_unsupported_resources(hcl)
                     log("⚠️  Lifecycle configuration stripped for LocalStack community compatibility")
                     deploy_ok = deploy_to_localstack(deploy_hcl)
+
+                    if not _IS_CI:
+                        status_writer.stage_deploy_done(deploy_ok)
+
                     if deploy_ok:
                         log("✅ Deployment successful")
                         verify_localstack()
@@ -264,22 +312,36 @@ def main():
                 log(f"💥 Remediation phase failed: {remediation_error}")
                 validation_report["error"] = str(remediation_error)
                 validation_report["violations"] = violations
-                # Don't re-raise; write report and continue to finally block
+                if not _IS_CI:
+                    status_writer.failed(str(remediation_error))
 
     except Exception as e:
         log(f"💥 Unhandled exception: {e}")
         validation_report["error"] = str(e)
+        if not _IS_CI:
+            status_writer.failed(str(e))
 
     finally:
         # ✅ CRITICAL — Always write validation report
         with open(VALIDATION_REPORT_PATH, "w", encoding="utf-8") as f:
             json.dump(validation_report, f, indent=2)
         log(f"📄 Validation report written to {VALIDATION_REPORT_PATH}")
-        
+
         duration = round(time.time() - start, 2)
         log(f"⏱️  Pipeline completed in {duration}s")
         log("═" * 60)
+
+        # PHASE 5 — Metrics
+        if not _IS_CI:
+            status_writer.stage_metrics()
+
         push_metrics(violations_count, remediation_ok, deploy_ok, duration)
+
+        if not _IS_CI:
+            status_writer.stage_metrics_done()
+            status_writer.complete(violations_count, violations_after if violations_count > 0 else 0, deploy_ok)
+            log("🖥️  Dashboard will close when you press Ctrl+C")
+            time.sleep(5)  # keep server alive so dashboard shows complete state
 
 if __name__ == "__main__":
     main()
