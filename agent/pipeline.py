@@ -20,16 +20,24 @@ from validator import validate_tf
 
 load_dotenv()
 
+# ── CI detection ──────────────────────────────────────────────────────────────
+_IS_CI = os.getenv("CI") == "true"
+
+# ── Dashboard imports (local runs only) ───────────────────────────────────────
+if not _IS_CI:
+    import dashboard.serve as serve
+    import dashboard.status_writer as status_writer
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
-BASE_DIR      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TERRAFORM_DIR = os.path.join(BASE_DIR, "terraform")
-DEPLOY_DIR    = os.path.join(TERRAFORM_DIR, "deploy")
-REPORT_PATH   = os.path.join(BASE_DIR, "reports", "scan_report.json")
+BASE_DIR               = _BASE_DIR_EARLY
+TERRAFORM_DIR          = os.path.join(BASE_DIR, "terraform")
+DEPLOY_DIR             = os.path.join(TERRAFORM_DIR, "deploy")
+REPORT_PATH            = os.path.join(BASE_DIR, "reports", "scan_report.json")
 VALIDATION_REPORT_PATH = os.path.join(BASE_DIR, "reports", "validation_report.json")
-LOG_PATH      = os.path.join(BASE_DIR, "logs", "pipeline.log")
-CHECKOV_CMD   = shutil.which("checkov") or "checkov"
-PUSHGATEWAY   = "localhost:9091"
-JOB_NAME      = "localaegis_pipeline"
+LOG_PATH               = os.path.join(BASE_DIR, "logs", "pipeline.log")
+CHECKOV_CMD            = shutil.which("checkov") or "checkov"
+PUSHGATEWAY            = "localhost:9091"
+JOB_NAME               = "localaegis_pipeline"
 
 # ── Directory bootstrap (CI runners start with empty workspace) ───────────────
 os.makedirs(os.path.join(BASE_DIR, "logs"),    exist_ok=True)
@@ -59,7 +67,7 @@ _logger.setLevel(logging.INFO)
 _logger.addHandler(_handler)
 
 def log(msg):
-    ts = time.strftime("%Y-%m-%d %H:%M:%S")
+    ts   = time.strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{ts}] {msg}"
     print(line)
     _logger.info(line)
@@ -96,7 +104,6 @@ def push_metrics(violations, remediation_ok, deploy_ok, duration):
 def run_checkov_scan():
     log("📋 Running Checkov scan...")
 
-    # Remove any stale path at REPORT_PATH — guards against directory collision
     if os.path.isdir(REPORT_PATH):
         shutil.rmtree(REPORT_PATH)
         log(f"⚠️  Removed stale directory at {REPORT_PATH}")
@@ -112,7 +119,6 @@ def run_checkov_scan():
     )
 
     if os.path.isdir(REPORT_PATH):
-        # Checkov created a directory instead of a file — extract JSON from stdout
         log("⚠️  Checkov wrote a directory instead of file — falling back to stdout")
         shutil.rmtree(REPORT_PATH)
         with open(REPORT_PATH, "w", encoding="utf-8") as f:
@@ -126,19 +132,14 @@ def run_checkov_scan():
 
 # ── Strip unsupported LocalStack community resources ──────────────────────────
 def strip_unsupported_resources(hcl: str) -> str:
-    """
-    Removes resource blocks that LocalStack community does not support.
-    Uses a brace-depth parser — never regex — to handle nested blocks correctly.
-    """
     skip_types = {"aws_s3_bucket_lifecycle_configuration"}
-    lines = hcl.splitlines()
+    lines  = hcl.splitlines()
     result = []
-    skip  = False
-    depth = 0
+    skip   = False
+    depth  = 0
 
     for line in lines:
         stripped = line.strip()
-
         if not skip:
             is_skip_block = any(
                 stripped.startswith(f'resource "{rt}"') for rt in skip_types
@@ -209,6 +210,7 @@ def verify_localstack():
 def main():
     start            = time.time()
     violations_count = 0
+    violations_after = 0
     remediation_ok   = False
     deploy_ok        = False
 
@@ -247,7 +249,8 @@ def main():
         if violations_count == 0:
             log("✅ No violations — skipping remediation")
             validation_report["passed"] = True
-            deploy_ok = True
+            remediation_ok = True
+            deploy_ok      = True
 
         else:
             for v in violations:
@@ -310,7 +313,7 @@ def main():
 
             except Exception as remediation_error:
                 log(f"💥 Remediation phase failed: {remediation_error}")
-                validation_report["error"] = str(remediation_error)
+                validation_report["error"]      = str(remediation_error)
                 validation_report["violations"] = violations
                 if not _IS_CI:
                     status_writer.failed(str(remediation_error))
@@ -322,7 +325,6 @@ def main():
             status_writer.failed(str(e))
 
     finally:
-        # ✅ CRITICAL — Always write validation report
         with open(VALIDATION_REPORT_PATH, "w", encoding="utf-8") as f:
             json.dump(validation_report, f, indent=2)
         log(f"📄 Validation report written to {VALIDATION_REPORT_PATH}")
