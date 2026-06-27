@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LocalAegis-AI · Pipeline Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Font faces ── */
+@font-face {
+  font-family: 'Bungee';
+  src: url('./fonts/Bungee-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+
+/* ── Tokens ── */
+:root {
+  --bg:         #F7F6F3;
+  --surface:    #FFFFFF;
+  --border:     #E4E2DC;
+  --text-primary:   #1A1917;
+  --text-secondary: #6B6860;
+  --text-hint:      #A09D97;
+  --accent:     #1A1917;
+  --green:      #3B6D11;
+  --green-bg:   #EAF3DE;
+  --green-mid:  #639922;
+  --red:        #A32D2D;
+  --red-bg:     #FCEBEB;
+  --amber:      #854F0B;
+  --amber-bg:   #FAEEDA;
+  --blue:       #185FA5;
+  --blue-bg:    #E6F1FB;
+  --radius-sm:  6px;
+  --radius-md:  10px;
+  --radius-lg:  14px;
+  --mono:       'JetBrains Mono', 'Fira Mono', 'Courier New', monospace;
+}
+
+/* ── Base ── */
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── Layout ── */
+.shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+}
+
+/* ── Header ── */
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.header-left {}
+
+.wordmark {
+  font-family: 'Bungee', sans-serif;
+  font-size: 26px;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.wordmark span {
+  color: var(--text-secondary);
+}
+
+.subline {
+  font-size: 12px;
+  color: var(--text-secondary);
+  letter-spacing: 0.03em;
+}
+
+.status-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 5px 12px;
+}
+
+.pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green-mid);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.85); }
+}
+
+/* ── Metric cards ── */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 1.5rem;
+}
+
+.metric-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+}
+
+.metric-label {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-hint);
+  margin-bottom: 6px;
+}
+
+.metric-value {
+  font-family: 'Bungee', sans-serif;
+  font-size: 28px;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  color: var(--text-primary);
+  transition: color 0.4s ease;
+}
+
+.metric-value.ok    { color: var(--green); }
+.metric-value.warn  { color: var(--red); }
+.metric-value.dim   { color: var(--text-hint); }
+
+/* ── Pipeline stages ── */
+.pipeline-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.card-label {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-hint);
+  margin-bottom: 1.1rem;
+}
+
+.stages-row {
+  display: flex;
+  align-items: center;
+}
+
+.stage-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+
+.stage-wrap:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 18px;
+  left: calc(50% + 20px);
+  right: calc(-50% + 20px);
+  height: 1px;
+  background: var(--border);
+  transition: background 0.5s ease;
+}
+
+.stage-wrap.done::after {
+  background: var(--green-mid);
+}
+
+.stage-dot {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.4s ease, border-color 0.4s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.stage-dot svg {
+  width: 16px;
+  height: 16px;
+  stroke: var(--text-hint);
+  stroke-width: 1.8;
+  fill: none;
+  transition: stroke 0.4s ease;
+}
+
+.stage-wrap.active .stage-dot {
+  background: var(--blue-bg);
+  border-color: #85B7EB;
+}
+.stage-wrap.active .stage-dot svg { stroke: var(--blue); }
+
+.stage-wrap.done .stage-dot {
+  background: var(--green-bg);
+  border-color: #97C459;
+}
+.stage-wrap.done .stage-dot svg { stroke: var(--green); }
+
+.stage-wrap.failed .stage-dot {
+  background: var(--red-bg);
+  border-color: #F09595;
+}
+.stage-wrap.failed .stage-dot svg { stroke: var(--red); }
+
+.stage-name {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-hint);
+  transition: color 0.4s ease;
+}
+
+.stage-wrap.active .stage-name { color: var(--blue); }
+.stage-wrap.done .stage-name   { color: var(--green); }
+.stage-wrap.failed .stage-name { color: var(--red); }
+
+/* ── Spinner on active stage ── */
+.stage-wrap.active .stage-dot::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: var(--blue);
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Two-col panels ── */
+.two-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  gap: 10px;
+  margin-bottom: 1.5rem;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.5rem;
+}
+
+/* ── Violation rows ── */
+.violation-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 7px;
+  transition: border-color 0.4s, background 0.4s;
+}
+
+.violation-row.resolved {
+  border-color: #C0DD97;
+  background: #F6FAF0;
+}
+
+.violation-row:last-child { margin-bottom: 0; }
+
+.v-left { display: flex; flex-direction: column; gap: 2px; }
+
+.v-id {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.v-name {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.badge {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.badge-high   { background: var(--red-bg);   color: var(--red); }
+.badge-medium { background: var(--amber-bg); color: var(--amber); }
+.badge-low    { background: var(--green-bg); color: var(--green); }
+.badge-ok     { background: var(--green-bg); color: var(--green); }
+
+/* ── Check bars ── */
+.bar-row { margin-bottom: 11px; }
+.bar-row:last-child { margin-bottom: 0; }
+
+.bar-top {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.bar-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.bar-pct {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--green);
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+
+.bar-pct.visible { opacity: 1; }
+
+.bar-track {
+  height: 4px;
+  background: var(--bg);
+  border-radius: 2px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--green-mid);
+  border-radius: 2px;
+  transition: width 1.1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Log tail ── */
+.log-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.5rem;
+}
+
+.log-body {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  min-height: 90px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.log-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 400;
+}
+
+.log-line:last-child {
+  border-bottom: none;
+}
+
+.log-line .ts {
+  font-size: 10.5px;
+  color: var(--text-hint);
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-weight: 400;
+}
+
+.log-line .msg {
+  flex: 1;
+  word-break: break-word;
+}
+
+.log-line.highlight {
+  background: #F6FAF0;
+  color: var(--green);
+  font-weight: 500;
+  border-bottom-color: #C0DD97;
+}
+
+.log-line.error {
+  background: var(--red-bg);
+  color: var(--red);
+  font-weight: 500;
+  border-bottom-color: #F7C1C1;
+}
+
+.log-line.warn {
+  background: var(--amber-bg);
+  color: var(--amber);
+  border-bottom-color: #FAC775;
+}
+
+/* ── Scrollbar ── */
+.log-body::-webkit-scrollbar { width: 4px; }
+.log-body::-webkit-scrollbar-track { background: transparent; }
+.log-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── Footer ── */
+.footer {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.footer-left {
+  font-family: 'Bungee', sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text-hint);
+}
+
+.footer-right {
+  font-size: 11px;
+  color: var(--text-hint);
+}
+
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <div class="wordmark">LOCAL<span>AEGIS</span></div>
+      <div class="subline">Autonomous DevSecOps Pipeline · Monitor</div>
+    </div>
+    <div class="status-pill">
+      <div class="pulse" id="pulse-dot"></div>
+      <span id="status-text">Waiting for pipeline</span>
+    </div>
+  </header>
+
+  <!-- Metrics -->
+  <div class="metrics-grid">
+    <div class="metric-card">
+      <div class="metric-label">Violations found</div>
+      <div class="metric-value dim" id="m-violations">—</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">After remediation</div>
+      <div class="metric-value dim" id="m-after">—</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Deploy status</div>
+      <div class="metric-value dim" id="m-deploy">—</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Duration</div>
+      <div class="metric-value dim" id="m-duration">—</div>
+    </div>
+  </div>
+
+  <!-- Pipeline stages -->
+  <div class="pipeline-card">
+    <div class="card-label">Pipeline run</div>
+    <div class="stages-row" id="stages-row">
+
+      <!-- Scan -->
+      <div class="stage-wrap" id="stage-scan">
+        <div class="stage-dot">
+          <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <div class="stage-name">Scan</div>
+      </div>
+
+      <!-- Remediate -->
+      <div class="stage-wrap" id="stage-remediate">
+        <div class="stage-dot">
+          <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        </div>
+        <div class="stage-name">Remediate</div>
+      </div>
+
+      <!-- Validate -->
+      <div class="stage-wrap" id="stage-validate">
+        <div class="stage-dot">
+          <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+        </div>
+        <div class="stage-name">Validate</div>
+      </div>
+
+      <!-- Deploy -->
+      <div class="stage-wrap" id="stage-deploy">
+        <div class="stage-dot">
+          <svg viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+        </div>
+        <div class="stage-name">Deploy</div>
+      </div>
+
+      <!-- Metrics -->
+      <div class="stage-wrap" id="stage-metrics">
+        <div class="stage-dot">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        </div>
+        <div class="stage-name">Metrics</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Violations + Check bars -->
+  <div class="two-col">
+
+    <div class="panel">
+      <div class="card-label">Violations detected</div>
+      <div id="violations-list">
+        <!-- injected -->
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="card-label">Check resolution</div>
+      <div id="checks-bars">
+        <!-- injected -->
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Log tail -->
+  <div class="log-card">
+    <div class="card-label" style="margin-bottom: 0.75rem;">Log output</div>
+    <div class="log-body" id="log-body">
+      <span class="log-line" style="color: var(--text-hint);">Waiting for pipeline.py to start…</span>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-left">LOCALAEGIS · V1</div>
+    <div class="footer-right" id="footer-time">—</div>
+  </footer>
+
+</div>
+
+<script>
+const POLL_MS = 1000;
+
+const violations = [
+  { id: 'CKV2_AWS_6',  name: 'No public access block',  sev: 'HIGH' },
+  { id: 'CKV_AWS_18',  name: 'No access logging',        sev: 'MEDIUM' },
+  { id: 'CKV_AWS_21',  name: 'No versioning',            sev: 'MEDIUM' },
+  { id: 'CKV2_AWS_61', name: 'No lifecycle policy',      sev: 'LOW' },
+  { id: 'CKV2_AWS_62', name: 'No event notifications',   sev: 'LOW' },
+];
+
+const checks = [
+  'Public access block',
+  'Access logging',
+  'Versioning',
+  'Lifecycle policy',
+  'Event notifications',
+];
+
+function buildViolations() {
+  const list = document.getElementById('violations-list');
+  violations.forEach(v => {
+    const row = document.createElement('div');
+    row.className = 'violation-row';
+    row.id = 'vrow-' + v.id;
+    const sevClass = { HIGH: 'badge-high', MEDIUM: 'badge-medium', LOW: 'badge-low' }[v.sev];
+    row.innerHTML = `
+      <div class="v-left">
+        <span class="v-id">${v.id}</span>
+        <span class="v-name">${v.name}</span>
+      </div>
+      <span class="badge ${sevClass}" id="badge-${v.id}">${v.sev}</span>
+    `;
+    list.appendChild(row);
+  });
+}
+
+function buildBars() {
+  const wrap = document.getElementById('checks-bars');
+  checks.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML = `
+      <div class="bar-top">
+        <span class="bar-label">${c}</span>
+        <span class="bar-pct" id="barpct-${i}">100%</span>
+      </div>
+      <div class="bar-track">
+        <div class="bar-fill" id="barfill-${i}"></div>
+      </div>
+    `;
+    wrap.appendChild(row);
+  });
+}
+
+function setStage(id, state) {
+  const el = document.getElementById('stage-' + id);
+  if (!el) return;
+  el.className = 'stage-wrap ' + state;
+  const prev = el.previousElementSibling;
+  if (prev && state === 'done') prev.className = 'stage-wrap done';
+}
+
+function resolveViolations() {
+  violations.forEach(v => {
+    const row = document.getElementById('vrow-' + v.id);
+    const badge = document.getElementById('badge-' + v.id);
+    if (row) row.classList.add('resolved');
+    if (badge) { badge.textContent = 'FIXED'; badge.className = 'badge badge-ok'; }
+  });
+  checks.forEach((_, i) => {
+    const fill = document.getElementById('barfill-' + i);
+    const pct  = document.getElementById('barpct-' + i);
+    if (fill) fill.style.width = '100%';
+    if (pct)  pct.classList.add('visible');
+  });
+}
+
+function appendLog(msg, cls) {
+  const body = document.getElementById('log-body');
+  if (body.querySelector('.log-line[style]')) body.innerHTML = '';
+
+  const tsMatch = msg.match(/^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s*/);
+  const altMatch = !tsMatch && msg.match(/^\[([^\]]+)\]\s*/);
+  let ts = '', text = msg;
+
+  if (tsMatch) {
+    ts   = tsMatch[1].split(' ')[1];
+    text = msg.slice(tsMatch[0].length);
+  } else if (altMatch) {
+    ts   = altMatch[1];
+    text = msg.slice(altMatch[0].length);
+  }
+
+  const warnKeywords = ['stripped', 'Wiped', 'expected in CI'];
+  const lineClass = cls ? cls
+    : warnKeywords.some(k => text.includes(k)) ? 'warn' : '';
+
+  const line = document.createElement('div');
+  line.className = 'log-line' + (lineClass ? ' ' + lineClass : '');
+
+  if (ts) {
+    const tsSpan = document.createElement('span');
+    tsSpan.className = 'ts';
+    tsSpan.textContent = ts;
+    line.appendChild(tsSpan);
+  }
+
+  const msgSpan = document.createElement('span');
+  msgSpan.className = 'msg';
+  msgSpan.textContent = text;
+  line.appendChild(msgSpan);
+
+  body.appendChild(line);
+  body.scrollTop = body.scrollHeight;
+}
+
+function setMetric(id, val, cls) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = val;
+  el.className = 'metric-value' + (cls ? ' ' + cls : '');
+}
+
+function updateStatusPill(text) {
+  document.getElementById('status-text').textContent = text;
+}
+
+function updateFooterTime() {
+  const now = new Date();
+  document.getElementById('footer-time').textContent =
+    now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+let lastStage = null;
+
+function applyState(data) {
+  const stage    = data.stage || 'idle';
+  const logs     = data.logs  || [];
+  const metrics  = data.metrics || {};
+
+  // Pill
+  const pillMap = {
+    idle:      'Waiting for pipeline',
+    scan:      'Scanning Terraform',
+    remediate: 'LLM remediating',
+    validate:  'Validating output',
+    deploy:    'Deploying to LocalStack',
+    metrics:   'Pushing metrics',
+    complete:  'Pipeline complete',
+    failed:    'Pipeline failed',
+  };
+  updateStatusPill(pillMap[stage] || stage);
+
+  // Pulse
+  const pulse = document.getElementById('pulse-dot');
+  pulse.style.background = stage === 'complete' ? '#639922'
+    : stage === 'failed' ? '#A32D2D' : '#639922';
+
+  // Stage dots
+  const order = ['scan', 'remediate', 'validate', 'deploy', 'metrics'];
+  const idx = order.indexOf(stage);
+  order.forEach((s, i) => {
+    if (stage === 'complete' || stage === 'failed') {
+      setStage(s, stage === 'complete' ? 'done' : (i <= order.indexOf(lastStage || 'scan') ? 'done' : ''));
+    } else {
+      if (i < idx)  setStage(s, 'done');
+      if (i === idx) setStage(s, 'active');
+      if (i > idx)  setStage(s, '');
+    }
+  });
+
+  if (stage !== 'idle') lastStage = stage;
+
+  // Metrics
+  if (metrics.violations_found !== undefined)
+    setMetric('m-violations', metrics.violations_found, metrics.violations_found > 0 ? 'warn' : 'ok');
+  if (metrics.violations_after !== undefined)
+    setMetric('m-after', metrics.violations_after, metrics.violations_after === 0 ? 'ok' : 'warn');
+  if (metrics.deploy_ok !== undefined)
+    setMetric('m-deploy', metrics.deploy_ok ? 'OK' : 'FAIL', metrics.deploy_ok ? 'ok' : 'warn');
+  if (metrics.duration !== undefined)
+    setMetric('m-duration', metrics.duration + 's', '');
+
+  // Violations resolve on validate done
+  if (['validate', 'deploy', 'metrics', 'complete'].includes(stage))
+    resolveViolations();
+
+  // Logs
+  if (logs.length) {
+    const body = document.getElementById('log-body');
+    const existing = body.querySelectorAll('.log-line:not([style])').length;
+    logs.slice(existing).forEach(msg => {
+      const cls = msg.includes('ERROR') || msg.includes('FAIL') ? 'error'
+        : msg.includes('complete') || msg.includes('passed') || msg.includes('deployed') ? 'highlight'
+        : '';
+      appendLog(msg, cls);
+    });
+  }
+}
+
+buildViolations();
+buildBars();
+
+async function poll() {
+  try {
+    const res = await fetch('/status.json?t=' + Date.now());
+    if (res.ok) {
+      const data = await res.json();
+      applyState(data);
+    }
+  } catch (_) {}
+  updateFooterTime();
+}
+
+poll();
+setInterval(poll, POLL_MS);
+setInterval(updateFooterTime, 1000);
+</script>
+</body>
+</html>

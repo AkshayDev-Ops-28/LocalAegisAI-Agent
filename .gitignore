@@ -20,3 +20,7 @@ reports/
 # OS
 .DS_Store
 Thumbs.db
+
+
+# Runtime artifacts
+status.json
