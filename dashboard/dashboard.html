@@ -118,6 +118,32 @@ body {
   50%       { opacity: 0.5; transform: scale(0.85); }
 }
 
+/* ── Last run banner ── */
+.last-run-banner {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  margin-bottom: 1.5rem;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.last-run-banner.visible { display: flex; }
+
+.last-run-outcome {
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.last-run-outcome.ok  { background: var(--green-bg); color: var(--green); }
+.last-run-outcome.err { background: var(--red-bg);   color: var(--red); }
+
 /* ── Metric cards ── */
 .metrics-grid {
   display: grid;
@@ -481,6 +507,12 @@ body {
     </div>
   </header>
 
+  <!-- Last run banner -->
+  <div class="last-run-banner" id="last-run-banner">
+    <span id="last-run-label">Last run —</span>
+    <span class="last-run-outcome" id="last-run-outcome"></span>
+  </div>
+
   <!-- Metrics -->
   <div class="metrics-grid">
     <div class="metric-card">
@@ -554,16 +586,12 @@ body {
 
     <div class="panel">
       <div class="card-label">Violations detected</div>
-      <div id="violations-list">
-        <!-- injected -->
-      </div>
+      <div id="violations-list"></div>
     </div>
 
     <div class="panel">
       <div class="card-label">Check resolution</div>
-      <div id="checks-bars">
-        <!-- injected -->
-      </div>
+      <div id="checks-bars"></div>
     </div>
 
   </div>
@@ -649,9 +677,9 @@ function setStage(id, state) {
 
 function resolveViolations() {
   violations.forEach(v => {
-    const row = document.getElementById('vrow-' + v.id);
+    const row   = document.getElementById('vrow-' + v.id);
     const badge = document.getElementById('badge-' + v.id);
-    if (row) row.classList.add('resolved');
+    if (row)   row.classList.add('resolved');
     if (badge) { badge.textContent = 'FIXED'; badge.className = 'badge badge-ok'; }
   });
   checks.forEach((_, i) => {
@@ -660,45 +688,6 @@ function resolveViolations() {
     if (fill) fill.style.width = '100%';
     if (pct)  pct.classList.add('visible');
   });
-}
-
-function appendLog(msg, cls) {
-  const body = document.getElementById('log-body');
-  if (body.querySelector('.log-line[style]')) body.innerHTML = '';
-
-  const tsMatch = msg.match(/^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s*/);
-  const altMatch = !tsMatch && msg.match(/^\[([^\]]+)\]\s*/);
-  let ts = '', text = msg;
-
-  if (tsMatch) {
-    ts   = tsMatch[1].split(' ')[1];
-    text = msg.slice(tsMatch[0].length);
-  } else if (altMatch) {
-    ts   = altMatch[1];
-    text = msg.slice(altMatch[0].length);
-  }
-
-  const warnKeywords = ['stripped', 'Wiped', 'expected in CI'];
-  const lineClass = cls ? cls
-    : warnKeywords.some(k => text.includes(k)) ? 'warn' : '';
-
-  const line = document.createElement('div');
-  line.className = 'log-line' + (lineClass ? ' ' + lineClass : '');
-
-  if (ts) {
-    const tsSpan = document.createElement('span');
-    tsSpan.className = 'ts';
-    tsSpan.textContent = ts;
-    line.appendChild(tsSpan);
-  }
-
-  const msgSpan = document.createElement('span');
-  msgSpan.className = 'msg';
-  msgSpan.textContent = text;
-  line.appendChild(msgSpan);
-
-  body.appendChild(line);
-  body.scrollTop = body.scrollHeight;
 }
 
 function setMetric(id, val, cls) {
@@ -718,12 +707,34 @@ function updateFooterTime() {
     now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-let lastStage = null;
+// ── Last run banner ───────────────────────────────────────────────────────────
+async function tryLoadLastRun() {
+  try {
+    const res = await fetch('/last_run.json?t=' + Date.now());
+    if (!res.ok) return;
+    const data = await res.json();
+    const banner  = document.getElementById('last-run-banner');
+    const label   = document.getElementById('last-run-label');
+    const outcome = document.getElementById('last-run-outcome');
+    const dur     = data.metrics?.duration
+      ? (data.metrics.duration < 60
+          ? data.metrics.duration + 's'
+          : (data.metrics.duration / 60).toFixed(1) + 'm')
+      : '—';
+    label.textContent   = `Last run · ${dur} · ${data.metrics?.violations_found ?? '?'} violations found`;
+    outcome.textContent = data.outcome === 'complete' ? 'PASSED' : 'FAILED';
+    outcome.className   = 'last-run-outcome ' + (data.outcome === 'complete' ? 'ok' : 'err');
+    banner.classList.add('visible');
+  } catch (_) {}
+}
+
+let lastStage    = null;
+let lastLogIndex = 0;
 
 function applyState(data) {
-  const stage    = data.stage || 'idle';
-  const logs     = data.logs  || [];
-  const metrics  = data.metrics || {};
+  const stage   = data.stage   || 'idle';
+  const logs    = data.logs    || [];
+  const metrics = data.metrics || {};
 
   // Pill
   const pillMap = {
@@ -740,19 +751,20 @@ function applyState(data) {
 
   // Pulse
   const pulse = document.getElementById('pulse-dot');
-  pulse.style.background = stage === 'complete' ? '#639922'
-    : stage === 'failed' ? '#A32D2D' : '#639922';
+  pulse.style.background = stage === 'failed' ? '#A32D2D' : '#639922';
 
   // Stage dots
   const order = ['scan', 'remediate', 'validate', 'deploy', 'metrics'];
-  const idx = order.indexOf(stage);
+  const idx   = order.indexOf(stage);
   order.forEach((s, i) => {
-    if (stage === 'complete' || stage === 'failed') {
-      setStage(s, stage === 'complete' ? 'done' : (i <= order.indexOf(lastStage || 'scan') ? 'done' : ''));
+    if (stage === 'complete') {
+      setStage(s, 'done');
+    } else if (stage === 'failed') {
+      setStage(s, i <= order.indexOf(lastStage || 'scan') ? 'done' : '');
     } else {
-      if (i < idx)  setStage(s, 'done');
+      if (i < idx)   setStage(s, 'done');
       if (i === idx) setStage(s, 'active');
-      if (i > idx)  setStage(s, '');
+      if (i > idx)   setStage(s, '');
     }
   });
 
@@ -760,39 +772,78 @@ function applyState(data) {
 
   // Metrics
   if (metrics.violations_found !== undefined)
-    setMetric('m-violations', metrics.violations_found, metrics.violations_found > 0 ? 'warn' : 'ok');
+    setMetric('m-violations', metrics.violations_found,
+      metrics.violations_found > 0 ? 'warn' : 'ok');
   if (metrics.violations_after !== undefined)
-    setMetric('m-after', metrics.violations_after, metrics.violations_after === 0 ? 'ok' : 'warn');
+    setMetric('m-after', metrics.violations_after,
+      metrics.violations_after === 0 ? 'ok' : 'warn');
   if (metrics.deploy_ok !== undefined)
-    setMetric('m-deploy', metrics.deploy_ok ? 'OK' : 'FAIL', metrics.deploy_ok ? 'ok' : 'warn');
+    setMetric('m-deploy', metrics.deploy_ok ? 'OK' : 'FAIL',
+      metrics.deploy_ok ? 'ok' : 'warn');
   if (metrics.duration !== undefined)
-    setMetric('m-duration', metrics.duration + 's', '');
+    setMetric('m-duration', metrics.duration < 60
+      ? metrics.duration + 's'
+      : (metrics.duration / 60).toFixed(1) + 'm', '');
 
   // Violations resolve on validate done
   if (['validate', 'deploy', 'metrics', 'complete'].includes(stage))
     resolveViolations();
 
-  // Logs
-  if (logs.length) {
+  // Logs — index-tracked, object-aware
+  if (logs.length > lastLogIndex) {
     const body = document.getElementById('log-body');
-    const existing = body.querySelectorAll('.log-line:not([style])').length;
-    logs.slice(existing).forEach(msg => {
-      const cls = msg.includes('ERROR') || msg.includes('FAIL') ? 'error'
-        : msg.includes('complete') || msg.includes('passed') || msg.includes('deployed') ? 'highlight'
+    if (body.querySelector('.log-line[style]')) body.innerHTML = '';
+
+    logs.slice(lastLogIndex).forEach(entry => {
+      const ts  = (typeof entry === 'object') ? (entry.ts  || '') : '';
+      const msg = (typeof entry === 'object') ? (entry.msg || '') : String(entry);
+
+      const cls = (msg.includes('💥') || msg.includes('ERROR') || msg.includes('FAIL'))
+        ? 'error'
+        : (msg.includes('✅') || msg.includes('complete') || msg.includes('passed') || msg.includes('successful'))
+        ? 'highlight'
+        : (msg.includes('⚠️') || msg.includes('stripped') || msg.includes('Wiped'))
+        ? 'warn'
         : '';
-      appendLog(msg, cls);
+
+      const line = document.createElement('div');
+      line.className = 'log-line' + (cls ? ' ' + cls : '');
+
+      if (ts) {
+        const tsSpan = document.createElement('span');
+        tsSpan.className = 'ts';
+        tsSpan.textContent = ts;
+        line.appendChild(tsSpan);
+      }
+
+      const msgSpan = document.createElement('span');
+      msgSpan.className = 'msg';
+      msgSpan.textContent = msg;
+      line.appendChild(msgSpan);
+
+      body.appendChild(line);
     });
+
+    lastLogIndex = logs.length;
+    body.scrollTop = body.scrollHeight;
   }
 }
 
 buildViolations();
 buildBars();
 
+let firstPoll = true;
+
 async function poll() {
   try {
     const res = await fetch('/status.json?t=' + Date.now());
     if (res.ok) {
       const data = await res.json();
+      // On first poll, if pipeline is idle, show last run banner
+      if (firstPoll && data.stage === 'idle') {
+        await tryLoadLastRun();
+      }
+      firstPoll = false;
       applyState(data);
     }
   } catch (_) {}

@@ -1,121 +1,151 @@
 """
 LocalAegis-AI · Pipeline status writer
-Writes status.json to the project root at each pipeline stage.
-The dashboard polls this file every second.
+Buffered writes — flushes status.json every 500ms via background thread.
+Writes last_run.json on every terminal state for post-exit dashboard review.
 """
 
 import json
 import os
+import threading
 import time
-from pathlib import Path
 
-BASE_DIR   = Path(__file__).resolve().parent.parent
-STATUS_PATH = BASE_DIR / "status.json"
+# ── Paths ─────────────────────────────────────────────────────────────────────
+BASE_DIR      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATUS_PATH   = os.path.join(BASE_DIR, "status.json")
+LAST_RUN_PATH = os.path.join(BASE_DIR, "last_run.json")
 
-_start_time = None
-_logs: list[str] = []
-
-
-def _elapsed() -> float:
-    if _start_time is None:
-        return 0.0
-    return round(time.time() - _start_time, 1)
+# ── Internal state ────────────────────────────────────────────────────────────
+_lock       = threading.Lock()
+_flush_stop = threading.Event()
+_state      = {}
+_dirty      = False
 
 
-def _write(stage: str, metrics: dict | None = None):
-    payload = {
-        "stage":   stage,
-        "logs":    list(_logs),
-        "metrics": metrics or {},
-    }
-    STATUS_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+# ── Flush thread ──────────────────────────────────────────────────────────────
+def _flush_loop():
+    global _dirty
+    while not _flush_stop.is_set():
+        with _lock:
+            if _dirty:
+                _write_now()
+                _dirty = False
+        time.sleep(0.5)
 
 
+def _write_now():
+    """Write current _state to status.json. Must be called with _lock held."""
+    with open(STATUS_PATH, "w", encoding="utf-8") as f:
+        json.dump(_state, f, indent=2)
+
+
+def _mark_dirty():
+    """Signal that state has changed. Must be called with _lock held."""
+    global _dirty
+    _dirty = True
+
+
+def _write_last_run(outcome: str):
+    """Write last_run.json with outcome tag. Must be called with _lock held."""
+    with open(LAST_RUN_PATH, "w", encoding="utf-8") as f:
+        json.dump({**_state, "outcome": outcome}, f, indent=2)
+
+
+def _start_flush_thread():
+    t = threading.Thread(target=_flush_loop, daemon=True)
+    t.start()
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
 def init():
-    """Call at the very start of pipeline.py main()."""
-    global _start_time, _logs
-    _start_time = time.time()
-    _logs = []
-    _write("idle")
+    """Reset all state and start the flush thread."""
+    global _state, _dirty
+    with _lock:
+        _state = {
+            "stage":   "idle",
+            "started": time.time(),
+            "elapsed": 0,
+            "logs":    [],
+            "metrics": {
+                "violations_found": 0,
+                "violations_after": 0,
+                "deploy_ok":        False,
+                "duration":         0
+            }
+        }
+        _dirty = True
+    _start_flush_thread()
 
 
 def log(msg: str):
-    """Append a log line and flush to status.json (preserves current stage)."""
-    _logs.append(msg)
-    # re-read current stage so we don't overwrite it
-    try:
-        current = json.loads(STATUS_PATH.read_text(encoding="utf-8"))
-        stage   = current.get("stage", "idle")
-        metrics = current.get("metrics", {})
-    except Exception:
-        stage   = "idle"
-        metrics = {}
-    _write(stage, metrics)
+    ts = time.strftime("%H:%M:%S")
+    with _lock:
+        _state.setdefault("logs", []).append({"ts": ts, "msg": msg})
+        _state["elapsed"] = round(time.time() - _state.get("started", time.time()), 1)
+        _mark_dirty()
 
 
-def stage_scan():
-    _logs.append(f"[{_elapsed()}s] Checkov scan started on terraform/")
-    _write("scan")
+def _set_stage(stage: str):
+    with _lock:
+        _state["stage"] = stage
+        _mark_dirty()
+
+
+def stage_scan():               _set_stage("scan")
+def stage_remediate():          _set_stage("remediate")
+def stage_validate():           _set_stage("validate")
+def stage_deploy():             _set_stage("deploy")
+def stage_metrics():            _set_stage("metrics")
 
 
 def stage_scan_done(violations_found: int):
-    _logs.append(f"[{_elapsed()}s] Scan complete — {violations_found} violation(s) found")
-    _write("scan", {"violations_found": violations_found})
-
-
-def stage_remediate():
-    _logs.append(f"[{_elapsed()}s] Sending violations to LLM for remediation")
-    _write("remediate")
+    with _lock:
+        _state["metrics"]["violations_found"] = violations_found
+        _mark_dirty()
 
 
 def stage_remediate_done():
-    _logs.append(f"[{_elapsed()}s] HCL remediation received")
-    _write("remediate")
-
-
-def stage_validate():
-    _logs.append(f"[{_elapsed()}s] Re-validation started on remediated HCL")
-    _write("validate")
+    with _lock:
+        _mark_dirty()
 
 
 def stage_validate_done(violations_after: int):
-    status = "passed" if violations_after == 0 else "FAILED"
-    _logs.append(f"[{_elapsed()}s] Re-validation {status} — {violations_after} violation(s) remaining")
-    _write("validate", {"violations_after": violations_after})
-
-
-def stage_deploy():
-    _logs.append(f"[{_elapsed()}s] Deploying remediated infrastructure to LocalStack")
-    _write("deploy")
+    with _lock:
+        _state["metrics"]["violations_after"] = violations_after
+        _mark_dirty()
 
 
 def stage_deploy_done(success: bool):
-    result = "S3 buckets confirmed live" if success else "Deploy FAILED"
-    _logs.append(f"[{_elapsed()}s] {result}")
-    _write("deploy", {"deploy_ok": success})
-
-
-def stage_metrics():
-    _logs.append(f"[{_elapsed()}s] Pushing metrics to Prometheus Pushgateway")
-    _write("metrics")
+    with _lock:
+        _state["metrics"]["deploy_ok"] = success
+        _mark_dirty()
 
 
 def stage_metrics_done():
-    _logs.append(f"[{_elapsed()}s] Metrics pushed")
-    _write("metrics")
+    with _lock:
+        _mark_dirty()
 
 
 def complete(violations_found: int, violations_after: int, deploy_ok: bool):
-    dur = _elapsed()
-    _logs.append(f"[{dur}s] Pipeline complete — all checks passed")
-    _write("complete", {
-        "violations_found": violations_found,
-        "violations_after": violations_after,
-        "deploy_ok":        deploy_ok,
-        "duration":         dur,
-    })
+    with _lock:
+        _state["stage"]   = "complete"
+        _state["elapsed"] = round(time.time() - _state.get("started", time.time()), 1)
+        _state["metrics"].update({
+            "violations_found": violations_found,
+            "violations_after": violations_after,
+            "deploy_ok":        deploy_ok,
+            "duration":         _state["elapsed"]
+        })
+        _write_now()
+        _write_last_run("complete")
+        _dirty = False
 
 
 def failed(reason: str):
-    _logs.append(f"[{_elapsed()}s] ERROR — {reason}")
-    _write("failed")
+    ts = time.strftime("%H:%M:%S")
+    with _lock:
+        _state["stage"]   = "failed"
+        _state["elapsed"] = round(time.time() - _state.get("started", time.time()), 1)
+        _state.setdefault("logs", []).append({"ts": ts, "msg": f"💥 {reason}"})
+        _write_now()
+        _write_last_run("failed")
+        _dirty = False
