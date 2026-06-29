@@ -24,3 +24,5 @@ Thumbs.db
 
 # Runtime artifacts
 status.json
+
+last_run.json
