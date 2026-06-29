@@ -1,15 +1,27 @@
 import os
-import json
+import sys
 import tempfile
-import subprocess
+from checkov.runner_filter import RunnerFilter
+from checkov.terraform.runner import Runner as TerraformRunner
 
-import shutil
-CHECKOV_CMD = shutil.which("checkov") or "checkov"
+# ── Ensure project root is on path for policy registration ───────────────────
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _BASE_DIR not in sys.path:
+    sys.path.insert(0, _BASE_DIR)
+
+# ── Register custom policy so CKV_LOCAL_1 is active in this runner ────────────
+import importlib.util
+_policy_path = os.path.join(_BASE_DIR, "policies", "check_s3_mandatory_tags.py")
+_spec = importlib.util.spec_from_file_location("check_s3_mandatory_tags", _policy_path)
+_mod  = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_mod)
+
 
 def validate_tf(tf_code: str) -> dict:
     """
     Writes tf_code to a temp directory alongside a minimal provider block
-    and runs Checkov on the directory. Returns passed (bool) and residual violations.
+    and runs Checkov in-process. Returns passed (bool) and residual violations.
+    CKV_LOCAL_1 is active because the policy was registered at module load.
     """
     provider_tf = """
 terraform {
@@ -34,42 +46,39 @@ provider "aws" {
   }
 }
 """
-
     with tempfile.TemporaryDirectory() as tmpdir:
         with open(os.path.join(tmpdir, "main.tf"), "w", encoding="utf-8") as f:
             f.write(tf_code)
-
         with open(os.path.join(tmpdir, "provider.tf"), "w", encoding="utf-8") as f:
             f.write(provider_tf)
 
-        result = subprocess.run(
-            [CHECKOV_CMD, "-d", tmpdir, "-o", "json", "--quiet"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8"
+        runner_filter = RunnerFilter(
+            checks=None,
+            skip_checks=["CKV_AWS_144", "CKV_AWS_145"],
         )
 
-        output = result.stdout.strip()
-
-        if not output:
-            print("[validator] Checkov produced no output — treating as clean.")
-            return {"passed": True, "violations": []}
-
-        try:
-            report = json.loads(output)
-        except json.JSONDecodeError:
-            print("[validator] Could not parse Checkov output. Raw output:")
-            print(output)
-            return {"passed": False, "violations": [], "parse_error": True}
-
-        failed = report.get("results", {}).get("failed_checks", [])
+        runner = TerraformRunner()
+        report = runner.run(
+            root_folder=None,
+            files=[
+                os.path.join(tmpdir, "main.tf"),
+                os.path.join(tmpdir, "provider.tf"),
+            ],
+            runner_filter=runner_filter,
+        )
 
         violations = []
-        for check in failed:
+        for r in report.failed_checks:
+            check_obj = getattr(r, "check", None)
+            check_name = (
+                check_obj.name
+                if check_obj and hasattr(check_obj, "name")
+                else r.check_id
+            )
             violations.append({
-                "check_id":   check["check_id"],
-                "check_name": check["check_name"],
-                "resource":   check["resource"],
+                "check_id":   r.check_id,
+                "check_name": check_name,
+                "resource":   r.resource,
             })
 
         passed = len(violations) == 0

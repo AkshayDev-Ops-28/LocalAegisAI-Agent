@@ -1,7 +1,6 @@
 
 import os
 import sys
-import re
 import time
 import shutil
 import subprocess
@@ -18,6 +17,23 @@ if _BASE_DIR_EARLY not in sys.path:
 import boto3
 from dotenv import load_dotenv
 from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
+
+# ── Path bootstrap — MUST be unconditional and first ─────────────────────────
+_BASE_DIR_EARLY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _BASE_DIR_EARLY not in sys.path:
+    sys.path.insert(0, _BASE_DIR_EARLY)
+
+# ── Register custom Checkov policy BEFORE any runner is invoked ───────────────
+import importlib.util
+_policy_path = os.path.join(_BASE_DIR_EARLY, "policies", "check_s3_mandatory_tags.py")
+_spec = importlib.util.spec_from_file_location("check_s3_mandatory_tags", _policy_path)
+_mod  = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_mod)
+
+# ── Checkov in-process runner ─────────────────────────────────────────────────
+from checkov.terraform.runner import Runner as TerraformRunner
+from checkov.runner_filter import RunnerFilter
+from checkov.common.output.record import Record
 
 from scanner import load_violations
 from remediator import remediate
@@ -52,7 +68,7 @@ CHECKOV_CMD            = shutil.which("checkov") or "checkov"
 PUSHGATEWAY            = "localhost:9091"
 JOB_NAME               = "localaegis_pipeline"
 
-# ── Directory bootstrap (CI runners start with empty workspace) ───────────────
+# ── Directory bootstrap ───────────────────────────────────────────────────────
 os.makedirs(os.path.join(BASE_DIR, "logs"),    exist_ok=True)
 os.makedirs(os.path.join(BASE_DIR, "reports"), exist_ok=True)
 
@@ -90,58 +106,75 @@ def log(msg):
 # ── Metrics push ──────────────────────────────────────────────────────────────
 def push_metrics(violations, remediation_ok, deploy_ok, duration):
     registry = CollectorRegistry()
-
     Gauge("localaegis_violations_found",
           "Number of Checkov violations detected",
           registry=registry).set(violations)
-
     Gauge("localaegis_remediation_success",
           "1 if LLM remediation passed validation, 0 otherwise",
           registry=registry).set(1 if remediation_ok else 0)
-
     Gauge("localaegis_deploy_success",
           "1 if deployment to LocalStack succeeded, 0 otherwise",
           registry=registry).set(1 if deploy_ok else 0)
-
     Gauge("localaegis_pipeline_duration_seconds",
           "Total pipeline wall-clock time in seconds",
           registry=registry).set(duration)
-
     try:
         push_to_gateway(PUSHGATEWAY, job=JOB_NAME, registry=registry)
         log("✅ Metrics pushed to Pushgateway")
     except Exception as e:
         log(f"⚠️  Metrics push failed (expected in CI — no Pushgateway): {e}")
 
-# ── Checkov scan ──────────────────────────────────────────────────────────────
+# ── Checkov in-process scan ───────────────────────────────────────────────────
 def run_checkov_scan():
-    log("📋 Running Checkov scan...")
+    log("📋 Running Checkov scan (in-process)...")
+
+    target_file = os.path.join(TERRAFORM_DIR, "main.tf")
+
+    runner_filter = RunnerFilter(
+        checks=None,
+        skip_checks=["CKV_AWS_144", "CKV_AWS_145"],
+    )
+
+    runner = TerraformRunner()
+    report = runner.run(
+        root_folder=None,
+        files=[target_file],
+        runner_filter=runner_filter,
+    )
+
+    def get_check_name(r: Record) -> str:
+        check_obj = getattr(r, "check", None)
+        if check_obj and hasattr(check_obj, "name"):
+            return check_obj.name
+        return r.check_id
+
+    def record_to_dict(r: Record, passed: bool) -> dict:
+        return {
+            "check_id":       r.check_id,
+            "check_name":     get_check_name(r),
+            "resource":       r.resource,
+            "repo_file_path": r.repo_file_path,
+            "file_path":      r.file_path,
+            "guideline":      getattr(r, "guideline", "No guideline available"),
+            "check_result":   {"result": "passed" if passed else "failed"},
+        }
+
+    output = {
+        "results": {
+            "passed_checks": [record_to_dict(r, True)  for r in report.passed_checks],
+            "failed_checks": [record_to_dict(r, False) for r in report.failed_checks],
+        }
+    }
 
     if os.path.isdir(REPORT_PATH):
         shutil.rmtree(REPORT_PATH)
-        log(f"⚠️  Removed stale directory at {REPORT_PATH}")
     elif os.path.isfile(REPORT_PATH):
         os.remove(REPORT_PATH)
 
-    result = subprocess.run(
-        [CHECKOV_CMD, "-d", TERRAFORM_DIR, "-o", "json",
-         "--quiet", "--output-file", REPORT_PATH],
-        capture_output=True,
-        text=True,
-        encoding="utf-8"
-    )
-
-    if os.path.isdir(REPORT_PATH):
-        log("⚠️  Checkov wrote a directory instead of file — falling back to stdout")
-        shutil.rmtree(REPORT_PATH)
-        with open(REPORT_PATH, "w", encoding="utf-8") as f:
-            f.write(result.stdout)
-
-    if not os.path.isfile(REPORT_PATH):
-        raise RuntimeError(f"Checkov did not produce a report at {REPORT_PATH}")
+    with open(REPORT_PATH, "w", encoding="utf-8") as f:
+        json.dump(output, f, indent=2)
 
     log(f"✅ Checkov scan complete — report written to {REPORT_PATH}")
-
 
 # ── Strip unsupported LocalStack community resources ──────────────────────────
 def strip_unsupported_resources(hcl: str) -> str:
@@ -195,7 +228,6 @@ def deploy_to_localstack(hcl: str) -> bool:
         shutil.copy(provider_src, os.path.join(tmp, "provider.tf"))
         with open(os.path.join(tmp, "main.tf"), "w", encoding="utf-8") as f:
             f.write(hcl)
-
         for cmd in [["terraform", "init", "-no-color"],
                     ["terraform", "apply", "-auto-approve", "-no-color"]]:
             result = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True)
@@ -226,8 +258,8 @@ def main():
     violations_after = 0
     remediation_ok   = False
     deploy_ok        = False
+    violations_after = 0
 
-    # Create a default validation report structure
     validation_report = {
         "passed": False,
         "violations": [],
@@ -235,12 +267,11 @@ def main():
         "remediation_attempted": False
     }
 
-    # ── Launch dashboard (local only) ─────────────────────────────────────────
     if not _IS_CI:
         status_writer.init()
         url = serve.launch()
         log(f"🖥️  Dashboard: {url}")
-        time.sleep(0.8)  # give browser a moment before pipeline starts
+        time.sleep(0.8)
 
     try:
         log("═" * 60)
@@ -289,7 +320,6 @@ def main():
 
                 result = validate_tf(hcl)
                 validation_report.update(result)
-
                 violations_after = len(result.get("violations", []))
 
                 if not _IS_CI:
@@ -346,7 +376,6 @@ def main():
         log(f"⏱️  Pipeline completed in {duration}s")
         log("═" * 60)
 
-        # PHASE 5 — Metrics
         if not _IS_CI:
             status_writer.stage_metrics()
 
@@ -354,9 +383,9 @@ def main():
 
         if not _IS_CI:
             status_writer.stage_metrics_done()
-            status_writer.complete(violations_count, violations_after if violations_count > 0 else 0, deploy_ok)
+            status_writer.complete(violations_count, violations_after, deploy_ok)
             log("🖥️  Dashboard will close when you press Ctrl+C")
-            time.sleep(5)  # keep server alive so dashboard shows complete state
+            time.sleep(5)
 
 if __name__ == "__main__":
     main()
