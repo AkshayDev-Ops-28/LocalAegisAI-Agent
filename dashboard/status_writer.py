@@ -62,14 +62,16 @@ def init():
     with _lock:
         _state = {
             "stage":   "idle",
+            "run_id":  None,
             "started": time.time(),
             "elapsed": 0,
             "logs":    [],
             "metrics": {
-                "violations_found": 0,
-                "violations_after": 0,
-                "deploy_ok":        False,
-                "duration":         0
+                "violations_found":  0,
+                "violations_after":  0,
+                "violations_waived": 0,
+                "deploy_ok":         False,
+                "duration":          0
             }
         }
         _dirty = True
@@ -95,6 +97,15 @@ def stage_remediate():          _set_stage("remediate")
 def stage_validate():           _set_stage("validate")
 def stage_deploy():             _set_stage("deploy")
 def stage_metrics():            _set_stage("metrics")
+
+
+def stage_awaiting_approval(run_id: str):
+    """Pipeline has paused after scanning and is waiting on a human decision
+    via the dashboard checklist. Non-CI, local runs only."""
+    with _lock:
+        _state["stage"]  = "awaiting_approval"
+        _state["run_id"] = run_id
+        _mark_dirty()
 
 
 def stage_scan_done(violations_found: int):
@@ -125,15 +136,16 @@ def stage_metrics_done():
         _mark_dirty()
 
 
-def complete(violations_found: int, violations_after: int, deploy_ok: bool):
+def complete(violations_found: int, violations_after: int, deploy_ok: bool, violations_waived: int = 0):
     with _lock:
         _state["stage"]   = "complete"
         _state["elapsed"] = round(time.time() - _state.get("started", time.time()), 1)
         _state["metrics"].update({
-            "violations_found": violations_found,
-            "violations_after": violations_after,
-            "deploy_ok":        deploy_ok,
-            "duration":         _state["elapsed"]
+            "violations_found":  violations_found,
+            "violations_after":  violations_after,
+            "violations_waived": violations_waived,
+            "deploy_ok":         deploy_ok,
+            "duration":          _state["elapsed"]
         })
         _write_now()
         _write_last_run("complete")

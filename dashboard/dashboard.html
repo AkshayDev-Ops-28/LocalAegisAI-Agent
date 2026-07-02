@@ -54,11 +54,27 @@ body {
   min-height: 100vh;
 }
 
-/* ── Layout ── */
-.shell {
-  max-width: 960px;
+/* ── Page layout: main column + right sidebar ── */
+.page-grid {
+  max-width: 1320px;
   margin: 0 auto;
   padding: 2rem 1.5rem 3rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.main-col { min-width: 0; }
+
+.sidebar-col {
+  position: sticky;
+  top: 1.5rem;
+}
+
+@media (max-width: 1080px) {
+  .page-grid { grid-template-columns: 1fr; }
+  .sidebar-col { position: static; }
 }
 
 /* ── Header ── */
@@ -143,6 +159,137 @@ body {
 
 .last-run-outcome.ok  { background: var(--green-bg); color: var(--green); }
 .last-run-outcome.err { background: var(--red-bg);   color: var(--red); }
+
+/* ── Approval card (checklist) ── */
+.approval-card {
+  background: var(--surface);
+  border: 1px solid #85B7EB;
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.approval-card.hidden { display: none; }
+
+.approval-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.approval-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--blue);
+}
+
+.approval-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+.approval-row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.approval-row-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.approval-row-top label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  flex: 1;
+  font-size: 12.5px;
+}
+
+.approval-row-top input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--green-mid);
+  cursor: pointer;
+}
+
+.approval-check-id {
+  font-family: var(--mono);
+  font-weight: 500;
+}
+
+.approval-check-name {
+  color: var(--text-secondary);
+}
+
+.waiver-reason-box {
+  margin-top: 8px;
+  display: none;
+}
+
+.waiver-reason-box.visible { display: block; }
+
+.waiver-reason-box textarea {
+  width: 100%;
+  min-height: 54px;
+  resize: vertical;
+  border: 1px solid var(--amber);
+  background: var(--amber-bg);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.waiver-reason-box textarea::placeholder { color: #A87F3F; }
+
+.waiver-reason-label {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--amber);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.approval-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1rem;
+}
+
+.approval-msg {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.approval-msg.error { color: var(--red); }
+.approval-msg.ok    { color: var(--green); }
+
+.btn-primary {
+  background: var(--text-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 9px 18px;
+  font-size: 12.5px;
+  font-weight: 500;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.btn-primary:hover { opacity: 0.85; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ── Metric cards ── */
 .metrics-grid {
@@ -327,6 +474,11 @@ body {
   background: #F6FAF0;
 }
 
+.violation-row.waived {
+  border-color: #FAC775;
+  background: var(--amber-bg);
+}
+
 .violation-row:last-child { margin-bottom: 0; }
 
 .v-left { display: flex; flex-direction: column; gap: 2px; }
@@ -355,6 +507,7 @@ body {
 .badge-medium { background: var(--amber-bg); color: var(--amber); }
 .badge-low    { background: var(--green-bg); color: var(--green); }
 .badge-ok     { background: var(--green-bg); color: var(--green); }
+.badge-waived { background: var(--amber-bg); color: var(--amber); }
 
 /* ── Check bars ── */
 .bar-row { margin-bottom: 11px; }
@@ -489,126 +642,273 @@ body {
   color: var(--text-hint);
 }
 
+/* ── Sidebar: Waiver maintenance panel ── */
+.sidebar-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.1rem 1.2rem;
+}
+
+.sidebar-title {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-hint);
+  margin-bottom: 0.9rem;
+}
+
+.waiver-run-select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  padding: 7px 9px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--text-primary);
+  margin-bottom: 0.9rem;
+}
+
+.waiver-empty {
+  font-size: 11.5px;
+  color: var(--text-hint);
+  padding: 10px 2px;
+}
+
+.waiver-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 9px 10px;
+  margin-bottom: 8px;
+}
+
+.waiver-item:last-child { margin-bottom: 0; }
+
+.waiver-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.waiver-item-id {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.waiver-item-resource {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.waiver-item-reason {
+  font-size: 11.5px;
+  color: var(--text-primary);
+  background: var(--bg);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  line-height: 1.45;
+}
+
+.waiver-item-meta {
+  font-size: 10px;
+  color: var(--text-hint);
+  margin-bottom: 6px;
+}
+
+.waiver-item-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-mini {
+  font-size: 10.5px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 4px;
+  padding: 4px 9px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-family: 'Inter', sans-serif;
+}
+
+.btn-mini:hover { background: var(--surface); }
+.btn-mini.danger { color: var(--red); border-color: #F09595; }
+.btn-mini.confirm { color: var(--green); border-color: #97C459; }
+
+.waiver-edit-textarea {
+  width: 100%;
+  min-height: 48px;
+  resize: vertical;
+  border: 1px solid var(--blue);
+  background: var(--blue-bg);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 11.5px;
+  margin-bottom: 6px;
+}
+
 </style>
 </head>
 <body>
 
-<div class="shell">
+<div class="page-grid">
 
-  <!-- Header -->
-  <header class="header">
-    <div class="header-left">
-      <div class="wordmark">LOCAL<span>AEGIS</span></div>
-      <div class="subline">Autonomous DevSecOps Pipeline · Monitor</div>
-    </div>
-    <div class="status-pill">
-      <div class="pulse" id="pulse-dot"></div>
-      <span id="status-text">Waiting for pipeline</span>
-    </div>
-  </header>
+  <!-- ═══════════════ MAIN COLUMN ═══════════════ -->
+  <div class="main-col">
 
-  <!-- Last run banner -->
-  <div class="last-run-banner" id="last-run-banner">
-    <span id="last-run-label">Last run —</span>
-    <span class="last-run-outcome" id="last-run-outcome"></span>
-  </div>
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="wordmark">LOCAL<span>AEGIS</span></div>
+        <div class="subline">Autonomous DevSecOps Pipeline · Monitor</div>
+      </div>
+      <div class="status-pill">
+        <div class="pulse" id="pulse-dot"></div>
+        <span id="status-text">Waiting for pipeline</span>
+      </div>
+    </header>
 
-  <!-- Metrics -->
-  <div class="metrics-grid">
-    <div class="metric-card">
-      <div class="metric-label">Violations found</div>
-      <div class="metric-value dim" id="m-violations">—</div>
+    <!-- Last run banner -->
+    <div class="last-run-banner" id="last-run-banner">
+      <span id="last-run-label">Last run —</span>
+      <span class="last-run-outcome" id="last-run-outcome"></span>
     </div>
-    <div class="metric-card">
-      <div class="metric-label">After remediation</div>
-      <div class="metric-value dim" id="m-after">—</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label">Deploy status</div>
-      <div class="metric-value dim" id="m-deploy">—</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label">Duration</div>
-      <div class="metric-value dim" id="m-duration">—</div>
-    </div>
-  </div>
 
-  <!-- Pipeline stages -->
-  <div class="pipeline-card">
-    <div class="card-label">Pipeline run</div>
-    <div class="stages-row" id="stages-row">
+    <!-- Approval checklist card (shown only when a scan is awaiting human decision) -->
+    <div class="approval-card hidden" id="approval-card">
+      <div class="approval-header">
+        <span class="approval-title">Awaiting Approval — Run <span id="approval-run-id"></span></span>
+      </div>
+      <div class="approval-hint">
+        Not every violation must be fixed today. Uncheck anything you want to waive for this run —
+        you'll need to explain why, so it's on record for whoever reviews this later.
+      </div>
+      <div id="approval-list"></div>
+      <div class="approval-footer">
+        <span class="approval-msg" id="approval-msg"></span>
+        <button class="btn-primary" id="submit-decisions-btn">Submit Decisions</button>
+      </div>
+    </div>
 
-      <!-- Scan -->
-      <div class="stage-wrap" id="stage-scan">
-        <div class="stage-dot">
-          <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    <!-- Metrics -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Violations found</div>
+        <div class="metric-value dim" id="m-violations">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">After remediation</div>
+        <div class="metric-value dim" id="m-after">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Deploy status</div>
+        <div class="metric-value dim" id="m-deploy">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Duration</div>
+        <div class="metric-value dim" id="m-duration">—</div>
+      </div>
+    </div>
+
+    <!-- Pipeline stages -->
+    <div class="pipeline-card">
+      <div class="card-label">Pipeline run</div>
+      <div class="stages-row" id="stages-row">
+
+        <!-- Scan -->
+        <div class="stage-wrap" id="stage-scan">
+          <div class="stage-dot">
+            <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <div class="stage-name">Scan</div>
         </div>
-        <div class="stage-name">Scan</div>
+
+        <!-- Remediate -->
+        <div class="stage-wrap" id="stage-remediate">
+          <div class="stage-dot">
+            <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          </div>
+          <div class="stage-name">Remediate</div>
+        </div>
+
+        <!-- Validate -->
+        <div class="stage-wrap" id="stage-validate">
+          <div class="stage-dot">
+            <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+          </div>
+          <div class="stage-name">Validate</div>
+        </div>
+
+        <!-- Deploy -->
+        <div class="stage-wrap" id="stage-deploy">
+          <div class="stage-dot">
+            <svg viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+          </div>
+          <div class="stage-name">Deploy</div>
+        </div>
+
+        <!-- Metrics -->
+        <div class="stage-wrap" id="stage-metrics">
+          <div class="stage-dot">
+            <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          </div>
+          <div class="stage-name">Metrics</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Violations + Check bars -->
+    <div class="two-col">
+
+      <div class="panel">
+        <div class="card-label">Violations detected</div>
+        <div id="violations-list"></div>
       </div>
 
-      <!-- Remediate -->
-      <div class="stage-wrap" id="stage-remediate">
-        <div class="stage-dot">
-          <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-        </div>
-        <div class="stage-name">Remediate</div>
-      </div>
-
-      <!-- Validate -->
-      <div class="stage-wrap" id="stage-validate">
-        <div class="stage-dot">
-          <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
-        </div>
-        <div class="stage-name">Validate</div>
-      </div>
-
-      <!-- Deploy -->
-      <div class="stage-wrap" id="stage-deploy">
-        <div class="stage-dot">
-          <svg viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
-        </div>
-        <div class="stage-name">Deploy</div>
-      </div>
-
-      <!-- Metrics -->
-      <div class="stage-wrap" id="stage-metrics">
-        <div class="stage-dot">
-          <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-        </div>
-        <div class="stage-name">Metrics</div>
+      <div class="panel">
+        <div class="card-label">Check resolution</div>
+        <div id="checks-bars"></div>
       </div>
 
     </div>
-  </div>
 
-  <!-- Violations + Check bars -->
-  <div class="two-col">
-
-    <div class="panel">
-      <div class="card-label">Violations detected</div>
-      <div id="violations-list"></div>
+    <!-- Log tail -->
+    <div class="log-card">
+      <div class="card-label" style="margin-bottom: 0.75rem;">Log output</div>
+      <div class="log-body" id="log-body">
+        <span class="log-line" style="color: var(--text-hint);">Waiting for pipeline.py to start…</span>
+      </div>
     </div>
 
-    <div class="panel">
-      <div class="card-label">Check resolution</div>
-      <div id="checks-bars"></div>
-    </div>
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="footer-left">LOCALAEGIS · V1</div>
+      <div class="footer-right" id="footer-time">—</div>
+    </footer>
 
   </div>
 
-  <!-- Log tail -->
-  <div class="log-card">
-    <div class="card-label" style="margin-bottom: 0.75rem;">Log output</div>
-    <div class="log-body" id="log-body">
-      <span class="log-line" style="color: var(--text-hint);">Waiting for pipeline.py to start…</span>
+  <!-- ═══════════════ SIDEBAR: WAIVER MAINTENANCE ═══════════════ -->
+  <aside class="sidebar-col">
+    <div class="sidebar-panel">
+      <div class="sidebar-title">Waiver History</div>
+      <select class="waiver-run-select" id="waiver-run-select">
+        <option value="">Loading runs…</option>
+      </select>
+      <div id="waiver-list">
+        <div class="waiver-empty">No waivers to show.</div>
+      </div>
     </div>
-  </div>
-
-  <!-- Footer -->
-  <footer class="footer">
-    <div class="footer-left">LOCALAEGIS · V1</div>
-    <div class="footer-right" id="footer-time">—</div>
-  </footer>
+  </aside>
 
 </div>
 
@@ -675,12 +975,18 @@ function setStage(id, state) {
   if (prev && state === 'done') prev.className = 'stage-wrap done';
 }
 
-function resolveViolations() {
+function resolveViolations(waivedIds) {
+  waivedIds = waivedIds || [];
   violations.forEach(v => {
     const row   = document.getElementById('vrow-' + v.id);
     const badge = document.getElementById('badge-' + v.id);
-    if (row)   row.classList.add('resolved');
-    if (badge) { badge.textContent = 'FIXED'; badge.className = 'badge badge-ok'; }
+    if (waivedIds.includes(v.id)) {
+      if (row)   { row.classList.remove('resolved'); row.classList.add('waived'); }
+      if (badge) { badge.textContent = 'WAIVED'; badge.className = 'badge badge-waived'; }
+    } else {
+      if (row)   row.classList.add('resolved');
+      if (badge) { badge.textContent = 'FIXED'; badge.className = 'badge badge-ok'; }
+    }
   });
   checks.forEach((_, i) => {
     const fill = document.getElementById('barfill-' + i);
@@ -728,8 +1034,9 @@ async function tryLoadLastRun() {
   } catch (_) {}
 }
 
-let lastStage    = null;
-let lastLogIndex = 0;
+let lastStage       = null;
+let lastLogIndex    = 0;
+let lastWaivedIds   = [];
 
 function applyState(data) {
   const stage   = data.stage   || 'idle';
@@ -738,14 +1045,15 @@ function applyState(data) {
 
   // Pill
   const pillMap = {
-    idle:      'Waiting for pipeline',
-    scan:      'Scanning Terraform',
-    remediate: 'LLM remediating',
-    validate:  'Validating output',
-    deploy:    'Deploying to LocalStack',
-    metrics:   'Pushing metrics',
-    complete:  'Pipeline complete',
-    failed:    'Pipeline failed',
+    idle:              'Waiting for pipeline',
+    awaiting_approval: 'Awaiting your decision',
+    scan:              'Scanning Terraform',
+    remediate:         'LLM remediating',
+    validate:          'Validating output',
+    deploy:            'Deploying to LocalStack',
+    metrics:           'Pushing metrics',
+    complete:          'Pipeline complete',
+    failed:            'Pipeline failed',
   };
   updateStatusPill(pillMap[stage] || stage);
 
@@ -761,6 +1069,8 @@ function applyState(data) {
       setStage(s, 'done');
     } else if (stage === 'failed') {
       setStage(s, i <= order.indexOf(lastStage || 'scan') ? 'done' : '');
+    } else if (stage === 'awaiting_approval') {
+      setStage(s, i === 0 ? 'done' : '');
     } else {
       if (i < idx)   setStage(s, 'done');
       if (i === idx) setStage(s, 'active');
@@ -768,7 +1078,7 @@ function applyState(data) {
     }
   });
 
-  if (stage !== 'idle') lastStage = stage;
+  if (stage !== 'idle' && stage !== 'awaiting_approval') lastStage = stage;
 
   // Metrics
   if (metrics.violations_found !== undefined)
@@ -785,9 +1095,9 @@ function applyState(data) {
       ? metrics.duration + 's'
       : (metrics.duration / 60).toFixed(1) + 'm', '');
 
-  // Violations resolve on validate done
+  // Violations resolve on validate done — waived ones get their own badge
   if (['validate', 'deploy', 'metrics', 'complete'].includes(stage))
-    resolveViolations();
+    resolveViolations(lastWaivedIds);
 
   // Logs — index-tracked, object-aware
   if (logs.length > lastLogIndex) {
@@ -829,8 +1139,265 @@ function applyState(data) {
   }
 }
 
+// ═══════════════ APPROVAL CHECKLIST ═══════════════
+
+let currentPendingRunId = null;
+
+function renderApprovalCard(pending) {
+  const card = document.getElementById('approval-card');
+
+  if (!pending || pending.status !== 'awaiting_approval') {
+    card.classList.add('hidden');
+    currentPendingRunId = null;
+    return;
+  }
+
+  // Already rendered for this run — don't rebuild and lose in-progress edits
+  if (currentPendingRunId === pending.run_id) return;
+  currentPendingRunId = pending.run_id;
+
+  document.getElementById('approval-run-id').textContent = pending.run_id;
+  const list = document.getElementById('approval-list');
+  list.innerHTML = '';
+
+  pending.violations.forEach(v => {
+    const row = document.createElement('div');
+    row.className = 'approval-row';
+    row.dataset.id = v.id;
+    row.dataset.checkId = v.check_id;
+    row.dataset.checkName = v.check_name;
+    row.dataset.resource = v.resource;
+    row.dataset.severity = v.severity;
+
+    row.innerHTML = `
+      <div class="approval-row-top">
+        <label>
+          <input type="checkbox" checked class="approval-checkbox" data-id="${v.id}" />
+          <span class="approval-check-id">${v.check_id}</span>
+          <span class="approval-check-name">— ${v.check_name} (${v.resource})</span>
+        </label>
+        <span class="badge badge-${v.severity.toLowerCase()}">${v.severity}</span>
+      </div>
+      <div class="waiver-reason-box" id="reason-box-${v.id}">
+        <span class="waiver-reason-label">Why are you skipping this?</span>
+        <textarea placeholder="e.g. dev-tier bucket, waived per team policy until staging promotion" data-id="${v.id}"></textarea>
+      </div>
+    `;
+    list.appendChild(row);
+  });
+
+  // Checkbox toggle -> show/hide the mandatory reason box
+  list.querySelectorAll('.approval-checkbox').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      const box = document.getElementById('reason-box-' + e.target.dataset.id);
+      box.classList.toggle('visible', !e.target.checked);
+    });
+  });
+
+  document.getElementById('approval-card').classList.remove('hidden');
+  document.getElementById('approval-msg').textContent = '';
+}
+
+async function submitDecisions() {
+  const msgEl = document.getElementById('approval-msg');
+  const rows  = document.querySelectorAll('#approval-list .approval-row');
+  const approved_ids = [];
+  const waivers = [];
+
+  for (const row of rows) {
+    const id = row.dataset.id;
+    const checkbox = row.querySelector('.approval-checkbox');
+    if (checkbox.checked) {
+      approved_ids.push(id);
+    } else {
+      const textarea = row.querySelector('textarea');
+      const reason = textarea.value.trim();
+      if (!reason) {
+        msgEl.textContent = `Please explain why you're skipping ${row.dataset.checkId} before submitting.`;
+        msgEl.className = 'approval-msg error';
+        textarea.focus();
+        return;
+      }
+      waivers.push({
+        id, check_id: row.dataset.checkId, check_name: row.dataset.checkName,
+        resource: row.dataset.resource, severity: row.dataset.severity, reason,
+      });
+    }
+  }
+
+  const btn = document.getElementById('submit-decisions-btn');
+  btn.disabled = true;
+  msgEl.textContent = 'Submitting…';
+  msgEl.className = 'approval-msg';
+
+  try {
+    const res = await fetch('/api/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ run_id: currentPendingRunId, approved_ids, waivers }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Submission failed');
+
+    lastWaivedIds = waivers.map(w => w.id);
+    document.getElementById('approval-card').classList.add('hidden');
+    msgEl.textContent = 'Decisions submitted — pipeline resuming.';
+    msgEl.className = 'approval-msg ok';
+    loadWaiverRuns(); // refresh sidebar so the new waivers show up immediately
+  } catch (e) {
+    msgEl.textContent = e.message;
+    msgEl.className = 'approval-msg error';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('submit-decisions-btn').addEventListener('click', submitDecisions);
+
+async function pollPendingReview() {
+  try {
+    const res = await fetch('/reports/pending_review.json?t=' + Date.now());
+    if (!res.ok) { renderApprovalCard(null); return; }
+    const data = await res.json();
+    renderApprovalCard(data);
+  } catch (_) { renderApprovalCard(null); }
+}
+
+// ═══════════════ SIDEBAR: WAIVER MAINTENANCE ═══════════════
+
+let currentWaiverRunId = null;
+
+async function loadWaiverRuns() {
+  try {
+    const res = await fetch('/api/waivers/runs?t=' + Date.now());
+    const data = await res.json();
+    const select = document.getElementById('waiver-run-select');
+    const runs = data.runs || [];
+
+    if (runs.length === 0) {
+      select.innerHTML = '<option value="">No waiver history yet</option>';
+      document.getElementById('waiver-list').innerHTML =
+        '<div class="waiver-empty">No waivers to show.</div>';
+      return;
+    }
+
+    const prevSelection = currentWaiverRunId;
+    select.innerHTML = runs.map(r =>
+      `<option value="${r.run_id}">${r.run_id} · ${r.waiver_count} waiver${r.waiver_count === 1 ? '' : 's'}</option>`
+    ).join('');
+
+    const toSelect = runs.find(r => r.run_id === prevSelection) ? prevSelection : runs[0].run_id;
+    select.value = toSelect;
+    loadWaiverDetail(toSelect);
+  } catch (_) {}
+}
+
+async function loadWaiverDetail(runId) {
+  currentWaiverRunId = runId;
+  const listEl = document.getElementById('waiver-list');
+  if (!runId) {
+    listEl.innerHTML = '<div class="waiver-empty">No waivers to show.</div>';
+    return;
+  }
+
+  try {
+    const res = await fetch(`/reports/waivers/${runId}.json?t=` + Date.now());
+    if (!res.ok) {
+      listEl.innerHTML = '<div class="waiver-empty">No waivers to show.</div>';
+      return;
+    }
+    const data = await res.json();
+    const waivers = data.waivers || [];
+
+    if (waivers.length === 0) {
+      listEl.innerHTML = '<div class="waiver-empty">No waivers for this run.</div>';
+      return;
+    }
+
+    listEl.innerHTML = '';
+    waivers.forEach(w => {
+      const item = document.createElement('div');
+      item.className = 'waiver-item';
+      item.innerHTML = `
+        <div class="waiver-item-top">
+          <span class="waiver-item-id">${w.check_id}</span>
+          <span class="badge badge-${(w.severity || 'low').toLowerCase()}">${w.severity}</span>
+        </div>
+        <div class="waiver-item-resource">${w.resource}</div>
+        <div class="waiver-item-reason" id="reason-text-${w.id}">${w.reason}</div>
+        <div class="waiver-item-meta">waived by ${w.waived_by} · ${new Date(w.waived_at).toLocaleString()}</div>
+        <div class="waiver-item-actions" id="actions-${w.id}">
+          <button class="btn-mini" data-action="edit" data-id="${w.id}">Edit</button>
+          <button class="btn-mini danger" data-action="delete" data-id="${w.id}">Delete</button>
+        </div>
+      `;
+      listEl.appendChild(item);
+    });
+
+    listEl.querySelectorAll('[data-action="edit"]').forEach(btn => {
+      btn.addEventListener('click', () => beginEditWaiver(runId, btn.dataset.id));
+    });
+    listEl.querySelectorAll('[data-action="delete"]').forEach(btn => {
+      btn.addEventListener('click', () => confirmDeleteWaiver(runId, btn.dataset.id));
+    });
+  } catch (_) {
+    listEl.innerHTML = '<div class="waiver-empty">Could not load waivers.</div>';
+  }
+}
+
+function beginEditWaiver(runId, waiverId) {
+  const reasonEl = document.getElementById(`reason-text-${waiverId}`);
+  const actionsEl = document.getElementById(`actions-${waiverId}`);
+  const currentText = reasonEl.textContent;
+
+  reasonEl.innerHTML = `<textarea class="waiver-edit-textarea" id="edit-area-${waiverId}">${currentText}</textarea>`;
+  actionsEl.innerHTML = `
+    <button class="btn-mini confirm" data-action="save">Save</button>
+    <button class="btn-mini" data-action="cancel">Cancel</button>
+  `;
+
+  actionsEl.querySelector('[data-action="save"]').addEventListener('click', async () => {
+    const newReason = document.getElementById(`edit-area-${waiverId}`).value.trim();
+    if (!newReason) return;
+    try {
+      const res = await fetch(`/api/waivers/${runId}/${waiverId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: newReason }),
+      });
+      if (!res.ok) throw new Error();
+      loadWaiverDetail(runId);
+    } catch (_) {
+      alert('Could not save the updated reason.');
+    }
+  });
+
+  actionsEl.querySelector('[data-action="cancel"]').addEventListener('click', () => {
+    loadWaiverDetail(runId);
+  });
+}
+
+async function confirmDeleteWaiver(runId, waiverId) {
+  if (!confirm('Delete this waiver? The violation will need a fresh decision next run.')) return;
+  try {
+    const res = await fetch(`/api/waivers/${runId}/${waiverId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error();
+    loadWaiverDetail(runId);
+    loadWaiverRuns();
+  } catch (_) {
+    alert('Could not delete the waiver.');
+  }
+}
+
+document.getElementById('waiver-run-select').addEventListener('change', (e) => {
+  loadWaiverDetail(e.target.value);
+});
+
+// ═══════════════ INIT / POLL LOOP ═══════════════
+
 buildViolations();
 buildBars();
+loadWaiverRuns();
 
 let firstPoll = true;
 
@@ -839,7 +1406,6 @@ async function poll() {
     const res = await fetch('/status.json?t=' + Date.now());
     if (res.ok) {
       const data = await res.json();
-      // On first poll, if pipeline is idle, show last run banner
       if (firstPoll && data.stage === 'idle') {
         await tryLoadLastRun();
       }
@@ -847,6 +1413,8 @@ async function poll() {
       applyState(data);
     }
   } catch (_) {}
+
+  await pollPendingReview();
   updateFooterTime();
 }
 
