@@ -26,3 +26,6 @@ Thumbs.db
 status.json
 
 last_run.json
+
+terraform/deploy/.state/
+reports/deploy_backups/

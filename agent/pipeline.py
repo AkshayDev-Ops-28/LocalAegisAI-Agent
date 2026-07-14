@@ -76,12 +76,70 @@ PENDING_REVIEW_PATH        = os.path.join(BASE_DIR, "reports", "pending_review.j
 APPROVED_SELECTION_PATH    = os.path.join(BASE_DIR, "reports", "approved_selection.json")
 LOG_PATH                   = os.path.join(BASE_DIR, "logs", "pipeline.log")
 CHECKOV_CMD                = shutil.which("checkov") or "checkov"
+DEPLOY_STATE_DIR           = os.path.join(DEPLOY_DIR, ".state")           # persistent, gitignored
+DEPLOY_BACKUP_ROOT         = os.path.join(BASE_DIR, "reports", "deploy_backups")
 PUSHGATEWAY                = "localhost:9091"
 JOB_NAME                   = "localaegis_pipeline"
 
 # ── Directory bootstrap ───────────────────────────────────────────────────────
+os.makedirs(DEPLOY_STATE_DIR, exist_ok=True)
+os.makedirs(DEPLOY_BACKUP_ROOT, exist_ok=True)
 os.makedirs(os.path.join(BASE_DIR, "logs"),    exist_ok=True)
 os.makedirs(os.path.join(BASE_DIR, "reports"), exist_ok=True)
+
+# ── Backup current deploy state before touching anything ─────────────────────
+def _backup_current_deploy(run_id: str) -> str | None:
+    """
+    Snapshots the CURRENT main.tf + terraform.tfstate (the last known-good
+    deploy) before this run's apply touches them. Returns the backup dir path,
+    or None if there's nothing to back up yet (first-ever deploy).
+    """
+    current_main  = os.path.join(DEPLOY_STATE_DIR, "main.tf")
+    current_state = os.path.join(DEPLOY_STATE_DIR, "terraform.tfstate")
+
+    if not os.path.isfile(current_main) or not os.path.isfile(current_state):
+        log("ℹ️  No prior deploy found — nothing to back up (first deploy)")
+        return None
+
+    backup_dir = os.path.join(DEPLOY_BACKUP_ROOT, run_id)
+    os.makedirs(backup_dir, exist_ok=True)
+    shutil.copy(current_main, os.path.join(backup_dir, "main.tf"))
+    shutil.copy(current_state, os.path.join(backup_dir, "terraform.tfstate"))
+    log(f"💾 Backed up last known-good deploy to {backup_dir}")
+    return backup_dir
+
+
+
+# ── Rollback to last known-good deploy ────────────────────────────────────────
+def _rollback_deploy(backup_dir: str) -> bool:
+    """
+    Restores main.tf + state from backup_dir into DEPLOY_STATE_DIR and
+    re-applies, bringing LocalStack back to the last known-good configuration.
+    Returns True only if the rollback apply itself succeeds — a failed
+    rollback is logged explicitly, never silently absorbed.
+    """
+    log("↩️  Rolling back to last known-good deploy...")
+    try:
+        shutil.copy(os.path.join(backup_dir, "main.tf"),
+                    os.path.join(DEPLOY_STATE_DIR, "main.tf"))
+        shutil.copy(os.path.join(backup_dir, "terraform.tfstate"),
+                    os.path.join(DEPLOY_STATE_DIR, "terraform.tfstate"))
+
+        result = subprocess.run(
+            ["terraform", "apply", "-auto-approve", "-no-color"],
+            cwd=DEPLOY_STATE_DIR, capture_output=True, text=True
+        )
+        log(result.stdout)
+        if result.returncode != 0:
+            log(f"🛑 ROLLBACK FAILED — LocalStack is in an UNKNOWN state:\n{result.stderr}")
+            return False
+
+        log("✅ Rollback successful — LocalStack restored to last known-good state")
+        return True
+    except Exception as e:
+        log(f"🛑 ROLLBACK FAILED — exception during restore: {e}")
+        return False
+
 
 # ── Logger ────────────────────────────────────────────────────────────────────
 _handler = RotatingFileHandler(
@@ -222,23 +280,32 @@ def wipe_localstack_buckets():
         log(f"🗑️  Wiped bucket: {bucket}")
 
 # ── Deploy ────────────────────────────────────────────────────────────────────
-def deploy_to_localstack(hcl: str) -> bool:
+def deploy_to_localstack(hcl: str, run_id: str) -> bool:
     provider_src = os.path.join(DEPLOY_DIR, "provider.tf")
-    tmp = tempfile.mkdtemp()
-    try:
-        shutil.copy(provider_src, os.path.join(tmp, "provider.tf"))
-        with open(os.path.join(tmp, "main.tf"), "w", encoding="utf-8") as f:
-            f.write(hcl)
-        for cmd in [["terraform", "init", "-no-color"],
-                    ["terraform", "apply", "-auto-approve", "-no-color"]]:
-            result = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True)
-            log(result.stdout)
-            if result.returncode != 0:
-                log(f"❌ Terraform error:\n{result.stderr}")
-                return False
-        return True
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+
+    backup_dir = _backup_current_deploy(run_id)
+
+    if not os.path.isfile(os.path.join(DEPLOY_STATE_DIR, "provider.tf")):
+        shutil.copy(provider_src, os.path.join(DEPLOY_STATE_DIR, "provider.tf"))
+
+    with open(os.path.join(DEPLOY_STATE_DIR, "main.tf"), "w", encoding="utf-8") as f:
+        f.write(hcl)
+
+    for cmd in [["terraform", "init", "-no-color"],
+                ["terraform", "apply", "-auto-approve", "-no-color"]]:
+        result = subprocess.run(cmd, cwd=DEPLOY_STATE_DIR, capture_output=True, text=True)
+        log(result.stdout)
+        if result.returncode != 0:
+            log(f"❌ Terraform error:\n{result.stderr}")
+            if backup_dir:
+                _rollback_deploy(backup_dir)
+            else:
+                log("⚠️  No backup available — nothing to roll back to (first deploy)")
+            return False
+
+    return True
+
+
 
 # ── Verify ────────────────────────────────────────────────────────────────────
 def verify_localstack():
@@ -442,10 +509,9 @@ def run_resume_phase(run_id: str, approved_ids: list, waivers: list):
                     if not _IS_CI:
                         status_writer.stage_deploy()
 
-                    wipe_localstack_buckets()
                     deploy_hcl = strip_unsupported_resources(hcl)
                     log("⚠️  Lifecycle configuration stripped for LocalStack community compatibility")
-                    deploy_ok = deploy_to_localstack(deploy_hcl)
+                    deploy_ok = deploy_to_localstack(deploy_hcl, run_id)
 
                     if not _IS_CI:
                         status_writer.stage_deploy_done(deploy_ok)
@@ -553,12 +619,6 @@ def main():
         except (FileNotFoundError, ValueError) as e:
             log(f"💥 {e}")
             sys.exit(1)
-        # approved_selection.json only carries waived_ids (v1, v2...); the
-        # full waiver records — check_id, resource, reason — live in
-        # reports/waivers/<run_id>.json, written by serve.py's /api/approve
-        # handler via save_waivers() BEFORE approved_selection.json is
-        # written. Load from there rather than assuming a field that
-        # approved_selection.json's schema never actually defines.
         waiver_data = load_waivers(_RESUME_RUN_ID)
         run_resume_phase(
             _RESUME_RUN_ID,
@@ -566,6 +626,12 @@ def main():
             waiver_data.get("waivers", []),
         )
         return
+
+    # Fresh scan — wipe stale approval files from any previous run
+    for stale in [APPROVED_SELECTION_PATH, PENDING_REVIEW_PATH]:
+        if os.path.isfile(stale):
+            os.remove(stale)
+
 
     run_id = time.strftime("%Y%m%d-%H%M%S")
     run_scan_phase(run_id)

@@ -1,40 +1,40 @@
 {
   "stage": "complete",
   "run_id": null,
-  "started": 1782992585.1040454,
-  "elapsed": 8.9,
+  "started": 1782994006.28845,
+  "elapsed": 10.7,
   "logs": [
     {
-      "ts": "17:13:05",
-      "msg": "[2026-07-02 17:13:05] \u25b6\ufe0f  Resuming run 20260702-171230 \u2014 5 approved, 1 waived"
+      "ts": "17:36:46",
+      "msg": "[2026-07-02 17:36:46] \u25b6\ufe0f  Resuming run 20260702-173555 \u2014 5 approved, 1 waived"
     },
     {
-      "ts": "17:13:05",
-      "msg": "[2026-07-02 17:13:05] \ud83e\udd16 PHASE 2: Sending approved violations to Groq LLM for remediation..."
+      "ts": "17:36:46",
+      "msg": "[2026-07-02 17:36:46] \ud83e\udd16 PHASE 2: Sending approved violations to Groq LLM for remediation..."
     },
     {
-      "ts": "17:13:09",
-      "msg": "[2026-07-02 17:13:09] \ud83d\udca5 Remediation phase failed: LLM failed to produce compliant HCL after 3 attempts"
+      "ts": "17:36:52",
+      "msg": "[2026-07-02 17:36:52] \ud83d\udca5 Remediation phase failed: LLM failed to produce compliant HCL after 3 attempts"
     },
     {
-      "ts": "17:13:09",
+      "ts": "17:36:52",
       "msg": "\ud83d\udca5 LLM failed to produce compliant HCL after 3 attempts"
     },
     {
-      "ts": "17:13:09",
-      "msg": "[2026-07-02 17:13:09] \ud83d\udcc4 Validation report written to C:\\Users\\Akshay\\OneDrive\\Documents\\Python\\LocalAegisAI\\reports\\validation_report.json"
+      "ts": "17:36:52",
+      "msg": "[2026-07-02 17:36:52] \ud83d\udcc4 Validation report written to C:\\Users\\Akshay\\OneDrive\\Documents\\Python\\LocalAegisAI\\reports\\validation_report.json"
     },
     {
-      "ts": "17:13:09",
-      "msg": "[2026-07-02 17:13:09] \u23f1\ufe0f  Pipeline completed in 4.84s"
+      "ts": "17:36:52",
+      "msg": "[2026-07-02 17:36:52] \u23f1\ufe0f  Pipeline completed in 6.61s"
     },
     {
-      "ts": "17:13:09",
-      "msg": "[2026-07-02 17:13:09] \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550"
+      "ts": "17:36:52",
+      "msg": "[2026-07-02 17:36:52] \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550"
     },
     {
-      "ts": "17:13:14",
-      "msg": "[2026-07-02 17:13:14] \u26a0\ufe0f  Metrics push failed (expected in CI \u2014 no Pushgateway): <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"
+      "ts": "17:36:56",
+      "msg": "[2026-07-02 17:36:56] \u26a0\ufe0f  Metrics push failed (expected in CI \u2014 no Pushgateway): <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"
     }
   ],
   "metrics": {
@@ -42,7 +42,7 @@
     "violations_after": 0,
     "violations_waived": 1,
     "deploy_ok": false,
-    "duration": 8.9
+    "duration": 10.7
   },
   "outcome": "complete"
 }

@@ -1,47 +1,83 @@
 {
-  "stage": "complete",
-  "run_id": null,
-  "started": 1782992585.1040454,
-  "elapsed": 8.9,
+  "stage": "awaiting_approval",
+  "run_id": "20260702-173721",
+  "started": 1782994041.5725033,
+  "elapsed": 2.0,
   "logs": [
     {
-      "ts": "17:13:05",
-      "msg": "[2026-07-02 17:13:05] \u25b6\ufe0f  Resuming run 20260702-171230 \u2014 5 approved, 1 waived"
+      "ts": "17:37:22",
+      "msg": "[2026-07-02 17:37:22] \ud83d\udda5\ufe0f  Dashboard: http://127.0.0.1:8765/dashboard/dashboard.html"
     },
     {
-      "ts": "17:13:05",
-      "msg": "[2026-07-02 17:13:05] \ud83e\udd16 PHASE 2: Sending approved violations to Groq LLM for remediation..."
+      "ts": "17:37:22",
+      "msg": "[2026-07-02 17:37:22] \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550"
     },
     {
-      "ts": "17:13:09",
-      "msg": "[2026-07-02 17:13:09] \ud83d\udca5 Remediation phase failed: LLM failed to produce compliant HCL after 3 attempts"
+      "ts": "17:37:22",
+      "msg": "[2026-07-02 17:37:22] \ud83d\ude80 LocalAegis-AI Pipeline \u2014 START"
     },
     {
-      "ts": "17:13:09",
-      "msg": "\ud83d\udca5 LLM failed to produce compliant HCL after 3 attempts"
+      "ts": "17:37:23",
+      "msg": "[2026-07-02 17:37:22] \ud83c\udd94 Run ID: 20260702-173721"
     },
     {
-      "ts": "17:13:09",
-      "msg": "[2026-07-02 17:13:09] \ud83d\udcc4 Validation report written to C:\\Users\\Akshay\\OneDrive\\Documents\\Python\\LocalAegisAI\\reports\\validation_report.json"
+      "ts": "17:37:23",
+      "msg": "[2026-07-02 17:37:23] \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550"
     },
     {
-      "ts": "17:13:09",
-      "msg": "[2026-07-02 17:13:09] \u23f1\ufe0f  Pipeline completed in 4.84s"
+      "ts": "17:37:23",
+      "msg": "[2026-07-02 17:37:23] \ud83d\udccb Running Checkov scan (in-process)..."
     },
     {
-      "ts": "17:13:09",
-      "msg": "[2026-07-02 17:13:09] \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550"
+      "ts": "17:37:23",
+      "msg": "[2026-07-02 17:37:23] \u2705 Checkov scan complete \u2014 report written to C:\\Users\\Akshay\\OneDrive\\Documents\\Python\\LocalAegisAI\\reports\\scan_report.json"
     },
     {
-      "ts": "17:13:14",
-      "msg": "[2026-07-02 17:13:14] \u26a0\ufe0f  Metrics push failed (expected in CI \u2014 no Pushgateway): <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"
+      "ts": "17:37:23",
+      "msg": "[2026-07-02 17:37:23] \ud83d\udd0d 6 violation(s) found"
+    },
+    {
+      "ts": "17:37:23",
+      "msg": "[2026-07-02 17:37:23]   \u26a0\ufe0f  CKV_LOCAL_1 \u2014 CKV_LOCAL_1"
+    },
+    {
+      "ts": "17:37:23",
+      "msg": "[2026-07-02 17:37:23]   \u26a0\ufe0f  CKV2_AWS_62 \u2014 CKV2_AWS_62"
+    },
+    {
+      "ts": "17:37:23",
+      "msg": "[2026-07-02 17:37:23]   \u26a0\ufe0f  CKV2_AWS_6 \u2014 CKV2_AWS_6"
+    },
+    {
+      "ts": "17:37:23",
+      "msg": "[2026-07-02 17:37:23]   \u26a0\ufe0f  CKV_AWS_18 \u2014 CKV_AWS_18"
+    },
+    {
+      "ts": "17:37:23",
+      "msg": "[2026-07-02 17:37:23]   \u26a0\ufe0f  CKV2_AWS_61 \u2014 CKV2_AWS_61"
+    },
+    {
+      "ts": "17:37:23",
+      "msg": "[2026-07-02 17:37:23]   \u26a0\ufe0f  CKV_AWS_21 \u2014 CKV_AWS_21"
+    },
+    {
+      "ts": "17:37:23",
+      "msg": "[2026-07-02 17:37:23] \ud83d\udcdd 6 violation(s) awaiting your decision on the dashboard"
+    },
+    {
+      "ts": "17:37:23",
+      "msg": "[2026-07-02 17:37:23] \u23f8\ufe0f  Pipeline paused \u2014 open the dashboard and submit your checklist decision"
+    },
+    {
+      "ts": "17:37:23",
+      "msg": "[2026-07-02 17:37:23] \ud83d\udda5\ufe0f  This process stays alive to keep serving the dashboard. Ctrl+C to stop."
     }
   ],
   "metrics": {
     "violations_found": 6,
     "violations_after": 0,
-    "violations_waived": 1,
+    "violations_waived": 0,
     "deploy_ok": false,
-    "duration": 8.9
+    "duration": 0
   }
 }

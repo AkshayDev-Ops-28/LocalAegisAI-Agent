@@ -1,917 +1,3 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>LocalAegis-AI · Pipeline Monitor</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet" />
-<style>
-
-/* ── Reset ── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-/* ── Font faces ── */
-@font-face {
-  font-family: 'Bungee';
-  src: url('./fonts/Bungee-Regular.ttf') format('truetype');
-  font-weight: 400;
-  font-display: swap;
-}
-
-/* ── Tokens ── */
-:root {
-  --bg:         #F7F6F3;
-  --surface:    #FFFFFF;
-  --border:     #E4E2DC;
-  --text-primary:   #1A1917;
-  --text-secondary: #6B6860;
-  --text-hint:      #A09D97;
-  --accent:     #1A1917;
-  --green:      #3B6D11;
-  --green-bg:   #EAF3DE;
-  --green-mid:  #639922;
-  --red:        #A32D2D;
-  --red-bg:     #FCEBEB;
-  --amber:      #854F0B;
-  --amber-bg:   #FAEEDA;
-  --blue:       #185FA5;
-  --blue-bg:    #E6F1FB;
-  --radius-sm:  6px;
-  --radius-md:  10px;
-  --radius-lg:  14px;
-  --mono:       'JetBrains Mono', 'Fira Mono', 'Courier New', monospace;
-}
-
-/* ── Base ── */
-body {
-  font-family: 'Inter', sans-serif;
-  background: var(--bg);
-  color: var(--text-primary);
-  font-size: 14px;
-  line-height: 1.6;
-  min-height: 100vh;
-}
-
-/* ── Page layout: main column + right sidebar ── */
-.page-grid {
-  max-width: 1320px;
-  margin: 0 auto;
-  padding: 2rem 1.5rem 3rem;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 1.5rem;
-  align-items: start;
-}
-
-.main-col { min-width: 0; }
-
-.sidebar-col {
-  position: sticky;
-  top: 1.5rem;
-}
-
-@media (max-width: 1080px) {
-  .page-grid { grid-template-columns: 1fr; }
-  .sidebar-col { position: static; }
-}
-
-/* ── Header ── */
-.header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  margin-bottom: 2rem;
-  padding-bottom: 1.25rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.header-left {}
-
-.wordmark {
-  font-family: 'Bungee', sans-serif;
-  font-size: 26px;
-  letter-spacing: 0.02em;
-  color: var(--text-primary);
-  line-height: 1;
-  margin-bottom: 4px;
-}
-
-.wordmark span {
-  color: var(--text-secondary);
-}
-
-.subline {
-  font-size: 12px;
-  color: var(--text-secondary);
-  letter-spacing: 0.03em;
-}
-
-.status-pill {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 5px 12px;
-}
-
-.pulse {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--green-mid);
-  animation: pulse-glow 2s ease-in-out infinite;
-}
-
-@keyframes pulse-glow {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.5; transform: scale(0.85); }
-}
-
-/* ── Last run banner ── */
-.last-run-banner {
-  display: none;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 10px 16px;
-  margin-bottom: 1.5rem;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.last-run-banner.visible { display: flex; }
-
-.last-run-outcome {
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-}
-
-.last-run-outcome.ok  { background: var(--green-bg); color: var(--green); }
-.last-run-outcome.err { background: var(--red-bg);   color: var(--red); }
-
-/* ── Approval card (checklist) ── */
-.approval-card {
-  background: var(--surface);
-  border: 1px solid #85B7EB;
-  border-radius: var(--radius-lg);
-  padding: 1.25rem 1.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.approval-card.hidden { display: none; }
-
-.approval-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1rem;
-}
-
-.approval-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--blue);
-}
-
-.approval-hint {
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin-bottom: 1rem;
-}
-
-.approval-row {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  margin-bottom: 8px;
-}
-
-.approval-row-top {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.approval-row-top label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  flex: 1;
-  font-size: 12.5px;
-}
-
-.approval-row-top input[type="checkbox"] {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--green-mid);
-  cursor: pointer;
-}
-
-.approval-check-id {
-  font-family: var(--mono);
-  font-weight: 500;
-}
-
-.approval-check-name {
-  color: var(--text-secondary);
-}
-
-.waiver-reason-box {
-  margin-top: 8px;
-  display: none;
-}
-
-.waiver-reason-box.visible { display: block; }
-
-.waiver-reason-box textarea {
-  width: 100%;
-  min-height: 54px;
-  resize: vertical;
-  border: 1px solid var(--amber);
-  background: var(--amber-bg);
-  border-radius: var(--radius-sm);
-  padding: 8px 10px;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  color: var(--text-primary);
-}
-
-.waiver-reason-box textarea::placeholder { color: #A87F3F; }
-
-.waiver-reason-label {
-  font-size: 10.5px;
-  font-weight: 500;
-  color: var(--amber);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 4px;
-  display: block;
-}
-
-.approval-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 1rem;
-}
-
-.approval-msg {
-  font-size: 11.5px;
-  color: var(--text-secondary);
-}
-
-.approval-msg.error { color: var(--red); }
-.approval-msg.ok    { color: var(--green); }
-
-.btn-primary {
-  background: var(--text-primary);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: 9px 18px;
-  font-size: 12.5px;
-  font-weight: 500;
-  font-family: 'Inter', sans-serif;
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-
-.btn-primary:hover { opacity: 0.85; }
-.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
-
-/* ── Metric cards ── */
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 1.5rem;
-}
-
-.metric-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 14px 16px;
-}
-
-.metric-label {
-  font-size: 10px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--text-hint);
-  margin-bottom: 6px;
-}
-
-.metric-value {
-  font-family: 'Bungee', sans-serif;
-  font-size: 28px;
-  letter-spacing: 0.01em;
-  line-height: 1;
-  color: var(--text-primary);
-  transition: color 0.4s ease;
-}
-
-.metric-value.ok    { color: var(--green); }
-.metric-value.warn  { color: var(--red); }
-.metric-value.dim   { color: var(--text-hint); }
-
-/* ── Pipeline stages ── */
-.pipeline-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1.25rem 1.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.card-label {
-  font-size: 10px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-hint);
-  margin-bottom: 1.1rem;
-}
-
-.stages-row {
-  display: flex;
-  align-items: center;
-}
-
-.stage-wrap {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  position: relative;
-}
-
-.stage-wrap:not(:last-child)::after {
-  content: '';
-  position: absolute;
-  top: 18px;
-  left: calc(50% + 20px);
-  right: calc(-50% + 20px);
-  height: 1px;
-  background: var(--border);
-  transition: background 0.5s ease;
-}
-
-.stage-wrap.done::after {
-  background: var(--green-mid);
-}
-
-.stage-dot {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.4s ease, border-color 0.4s ease;
-  position: relative;
-  z-index: 1;
-}
-
-.stage-dot svg {
-  width: 16px;
-  height: 16px;
-  stroke: var(--text-hint);
-  stroke-width: 1.8;
-  fill: none;
-  transition: stroke 0.4s ease;
-}
-
-.stage-wrap.active .stage-dot {
-  background: var(--blue-bg);
-  border-color: #85B7EB;
-}
-.stage-wrap.active .stage-dot svg { stroke: var(--blue); }
-
-.stage-wrap.done .stage-dot {
-  background: var(--green-bg);
-  border-color: #97C459;
-}
-.stage-wrap.done .stage-dot svg { stroke: var(--green); }
-
-.stage-wrap.failed .stage-dot {
-  background: var(--red-bg);
-  border-color: #F09595;
-}
-.stage-wrap.failed .stage-dot svg { stroke: var(--red); }
-
-.stage-name {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-hint);
-  transition: color 0.4s ease;
-}
-
-.stage-wrap.active .stage-name { color: var(--blue); }
-.stage-wrap.done .stage-name   { color: var(--green); }
-.stage-wrap.failed .stage-name { color: var(--red); }
-
-/* ── Spinner on active stage ── */
-.stage-wrap.active .stage-dot::before {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  border-top-color: var(--blue);
-  animation: spin 0.9s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* ── Two-col panels ── */
-.two-col {
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
-  gap: 10px;
-  margin-bottom: 1.5rem;
-}
-
-.panel {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1.25rem 1.5rem;
-}
-
-/* ── Violation rows ── */
-.violation-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 9px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  margin-bottom: 7px;
-  transition: border-color 0.4s, background 0.4s;
-}
-
-.violation-row.resolved {
-  border-color: #C0DD97;
-  background: #F6FAF0;
-}
-
-.violation-row.waived {
-  border-color: #FAC775;
-  background: var(--amber-bg);
-}
-
-.violation-row:last-child { margin-bottom: 0; }
-
-.v-left { display: flex; flex-direction: column; gap: 2px; }
-
-.v-id {
-  font-family: var(--mono);
-  font-size: 11.5px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.v-name {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.badge {
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  padding: 3px 8px;
-  border-radius: 4px;
-}
-
-.badge-high   { background: var(--red-bg);   color: var(--red); }
-.badge-medium { background: var(--amber-bg); color: var(--amber); }
-.badge-low    { background: var(--green-bg); color: var(--green); }
-.badge-ok     { background: var(--green-bg); color: var(--green); }
-.badge-waived { background: var(--amber-bg); color: var(--amber); }
-
-/* ── Check bars ── */
-.bar-row { margin-bottom: 11px; }
-.bar-row:last-child { margin-bottom: 0; }
-
-.bar-top {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 5px;
-}
-
-.bar-label {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.bar-pct {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--green);
-  opacity: 0;
-  transition: opacity 0.4s;
-}
-
-.bar-pct.visible { opacity: 1; }
-
-.bar-track {
-  height: 4px;
-  background: var(--bg);
-  border-radius: 2px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-}
-
-.bar-fill {
-  height: 100%;
-  width: 0%;
-  background: var(--green-mid);
-  border-radius: 2px;
-  transition: width 1.1s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* ── Log tail ── */
-.log-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1.25rem 1.5rem;
-}
-
-.log-body {
-  font-family: var(--mono);
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-  min-height: 90px;
-  max-height: 220px;
-  overflow-y: auto;
-}
-
-.log-line {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding: 5px 8px;
-  border-radius: 4px;
-  border-bottom: 1px solid var(--border);
-  font-weight: 400;
-}
-
-.log-line:last-child {
-  border-bottom: none;
-}
-
-.log-line .ts {
-  font-size: 10.5px;
-  color: var(--text-hint);
-  white-space: nowrap;
-  flex-shrink: 0;
-  font-weight: 400;
-}
-
-.log-line .msg {
-  flex: 1;
-  word-break: break-word;
-}
-
-.log-line.highlight {
-  background: #F6FAF0;
-  color: var(--green);
-  font-weight: 500;
-  border-bottom-color: #C0DD97;
-}
-
-.log-line.error {
-  background: var(--red-bg);
-  color: var(--red);
-  font-weight: 500;
-  border-bottom-color: #F7C1C1;
-}
-
-.log-line.warn {
-  background: var(--amber-bg);
-  color: var(--amber);
-  border-bottom-color: #FAC775;
-}
-
-/* ── Scrollbar ── */
-.log-body::-webkit-scrollbar { width: 4px; }
-.log-body::-webkit-scrollbar-track { background: transparent; }
-.log-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-/* ── Footer ── */
-.footer {
-  margin-top: 2rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.footer-left {
-  font-family: 'Bungee', sans-serif;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  color: var(--text-hint);
-}
-
-.footer-right {
-  font-size: 11px;
-  color: var(--text-hint);
-}
-
-/* ── Sidebar: Waiver maintenance panel ── */
-.sidebar-panel {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1.1rem 1.2rem;
-}
-
-.sidebar-title {
-  font-size: 10px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-hint);
-  margin-bottom: 0.9rem;
-}
-
-.waiver-run-select {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg);
-  padding: 7px 9px;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  color: var(--text-primary);
-  margin-bottom: 0.9rem;
-}
-
-.waiver-empty {
-  font-size: 11.5px;
-  color: var(--text-hint);
-  padding: 10px 2px;
-}
-
-.waiver-item {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 9px 10px;
-  margin-bottom: 8px;
-}
-
-.waiver-item:last-child { margin-bottom: 0; }
-
-.waiver-item-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 4px;
-}
-
-.waiver-item-id {
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.waiver-item-resource {
-  font-size: 10.5px;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-}
-
-.waiver-item-reason {
-  font-size: 11.5px;
-  color: var(--text-primary);
-  background: var(--bg);
-  border-radius: 4px;
-  padding: 6px 8px;
-  margin-bottom: 6px;
-  line-height: 1.45;
-}
-
-.waiver-item-meta {
-  font-size: 10px;
-  color: var(--text-hint);
-  margin-bottom: 6px;
-}
-
-.waiver-item-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.btn-mini {
-  font-size: 10.5px;
-  font-weight: 500;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  border-radius: 4px;
-  padding: 4px 9px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  font-family: 'Inter', sans-serif;
-}
-
-.btn-mini:hover { background: var(--surface); }
-.btn-mini.danger { color: var(--red); border-color: #F09595; }
-.btn-mini.confirm { color: var(--green); border-color: #97C459; }
-
-.waiver-edit-textarea {
-  width: 100%;
-  min-height: 48px;
-  resize: vertical;
-  border: 1px solid var(--blue);
-  background: var(--blue-bg);
-  border-radius: 4px;
-  padding: 6px 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 11.5px;
-  margin-bottom: 6px;
-}
-
-</style>
-</head>
-<body>
-
-<div class="page-grid">
-
-  <!-- ═══════════════ MAIN COLUMN ═══════════════ -->
-  <div class="main-col">
-
-    <!-- Header -->
-    <header class="header">
-      <div class="header-left">
-        <div class="wordmark">LOCAL<span>AEGIS</span></div>
-        <div class="subline">Autonomous DevSecOps Pipeline · Monitor</div>
-      </div>
-      <div class="status-pill">
-        <div class="pulse" id="pulse-dot"></div>
-        <span id="status-text">Waiting for pipeline</span>
-      </div>
-    </header>
-
-    <!-- Last run banner -->
-    <div class="last-run-banner" id="last-run-banner">
-      <span id="last-run-label">Last run —</span>
-      <span class="last-run-outcome" id="last-run-outcome"></span>
-    </div>
-
-    <!-- Approval checklist card (shown only when a scan is awaiting human decision) -->
-    <div class="approval-card hidden" id="approval-card">
-      <div class="approval-header">
-        <span class="approval-title">Awaiting Approval — Run <span id="approval-run-id"></span></span>
-      </div>
-      <div class="approval-hint">
-        Not every violation must be fixed today. Uncheck anything you want to waive for this run —
-        you'll need to explain why, so it's on record for whoever reviews this later.
-      </div>
-      <div id="approval-list"></div>
-      <div class="approval-footer">
-        <span class="approval-msg" id="approval-msg"></span>
-        <button class="btn-primary" id="submit-decisions-btn">Submit Decisions</button>
-      </div>
-    </div>
-
-    <!-- Metrics -->
-    <div class="metrics-grid">
-      <div class="metric-card">
-        <div class="metric-label">Violations found</div>
-        <div class="metric-value dim" id="m-violations">—</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">After remediation</div>
-        <div class="metric-value dim" id="m-after">—</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Deploy status</div>
-        <div class="metric-value dim" id="m-deploy">—</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Duration</div>
-        <div class="metric-value dim" id="m-duration">—</div>
-      </div>
-    </div>
-
-    <!-- Pipeline stages -->
-    <div class="pipeline-card">
-      <div class="card-label">Pipeline run</div>
-      <div class="stages-row" id="stages-row">
-
-        <!-- Scan -->
-        <div class="stage-wrap" id="stage-scan">
-          <div class="stage-dot">
-            <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          </div>
-          <div class="stage-name">Scan</div>
-        </div>
-
-        <!-- Remediate -->
-        <div class="stage-wrap" id="stage-remediate">
-          <div class="stage-dot">
-            <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-          </div>
-          <div class="stage-name">Remediate</div>
-        </div>
-
-        <!-- Validate -->
-        <div class="stage-wrap" id="stage-validate">
-          <div class="stage-dot">
-            <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
-          </div>
-          <div class="stage-name">Validate</div>
-        </div>
-
-        <!-- Deploy -->
-        <div class="stage-wrap" id="stage-deploy">
-          <div class="stage-dot">
-            <svg viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
-          </div>
-          <div class="stage-name">Deploy</div>
-        </div>
-
-        <!-- Metrics -->
-        <div class="stage-wrap" id="stage-metrics">
-          <div class="stage-dot">
-            <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-          </div>
-          <div class="stage-name">Metrics</div>
-        </div>
-
-      </div>
-    </div>
-
-    <!-- Violations + Check bars -->
-    <div class="two-col">
-
-      <div class="panel">
-        <div class="card-label">Violations detected</div>
-        <div id="violations-list"></div>
-      </div>
-
-      <div class="panel">
-        <div class="card-label">Check resolution</div>
-        <div id="checks-bars"></div>
-      </div>
-
-    </div>
-
-    <!-- Log tail -->
-    <div class="log-card">
-      <div class="card-label" style="margin-bottom: 0.75rem;">Log output</div>
-      <div class="log-body" id="log-body">
-        <span class="log-line" style="color: var(--text-hint);">Waiting for pipeline.py to start…</span>
-      </div>
-    </div>
-
-    <!-- Footer -->
-    <footer class="footer">
-      <div class="footer-left">LOCALAEGIS · V1</div>
-      <div class="footer-right" id="footer-time">—</div>
-    </footer>
-
-  </div>
-
-  <!-- ═══════════════ SIDEBAR: WAIVER MAINTENANCE ═══════════════ -->
-  <aside class="sidebar-col">
-    <div class="sidebar-panel">
-      <div class="sidebar-title">Waiver History</div>
-      <select class="waiver-run-select" id="waiver-run-select">
-        <option value="">Loading runs…</option>
-      </select>
-      <div id="waiver-list">
-        <div class="waiver-empty">No waivers to show.</div>
-      </div>
-    </div>
-  </aside>
-
-</div>
-
 <script>
 const POLL_MS = 1000;
 
@@ -1013,7 +99,6 @@ function updateFooterTime() {
     now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-// ── Last run banner ───────────────────────────────────────────────────────────
 async function tryLoadLastRun() {
   try {
     const res = await fetch('/last_run.json?t=' + Date.now());
@@ -1034,16 +119,15 @@ async function tryLoadLastRun() {
   } catch (_) {}
 }
 
-let lastStage       = null;
-let lastLogIndex    = 0;
-let lastWaivedIds   = [];
+let lastStage     = null;
+let lastLogIndex  = 0;
+let lastWaivedIds = [];
 
 function applyState(data) {
   const stage   = data.stage   || 'idle';
   const logs    = data.logs    || [];
   const metrics = data.metrics || {};
 
-  // Pill
   const pillMap = {
     idle:              'Waiting for pipeline',
     awaiting_approval: 'Awaiting your decision',
@@ -1057,11 +141,9 @@ function applyState(data) {
   };
   updateStatusPill(pillMap[stage] || stage);
 
-  // Pulse
   const pulse = document.getElementById('pulse-dot');
   pulse.style.background = stage === 'failed' ? '#A32D2D' : '#639922';
 
-  // Stage dots
   const order = ['scan', 'remediate', 'validate', 'deploy', 'metrics'];
   const idx   = order.indexOf(stage);
   order.forEach((s, i) => {
@@ -1080,7 +162,6 @@ function applyState(data) {
 
   if (stage !== 'idle' && stage !== 'awaiting_approval') lastStage = stage;
 
-  // Metrics
   if (metrics.violations_found !== undefined)
     setMetric('m-violations', metrics.violations_found,
       metrics.violations_found > 0 ? 'warn' : 'ok');
@@ -1095,11 +176,9 @@ function applyState(data) {
       ? metrics.duration + 's'
       : (metrics.duration / 60).toFixed(1) + 'm', '');
 
-  // Violations resolve on validate done — waived ones get their own badge
   if (['validate', 'deploy', 'metrics', 'complete'].includes(stage))
     resolveViolations(lastWaivedIds);
 
-  // Logs — index-tracked, object-aware
   if (logs.length > lastLogIndex) {
     const body = document.getElementById('log-body');
     if (body.querySelector('.log-line[style]')) body.innerHTML = '';
@@ -1152,7 +231,6 @@ function renderApprovalCard(pending) {
     return;
   }
 
-  // Already rendered for this run — don't rebuild and lose in-progress edits
   if (currentPendingRunId === pending.run_id) return;
   currentPendingRunId = pending.run_id;
 
@@ -1163,11 +241,11 @@ function renderApprovalCard(pending) {
   pending.violations.forEach(v => {
     const row = document.createElement('div');
     row.className = 'approval-row';
-    row.dataset.id = v.id;
-    row.dataset.checkId = v.check_id;
+    row.dataset.id        = v.id;
+    row.dataset.checkId   = v.check_id;
     row.dataset.checkName = v.check_name;
-    row.dataset.resource = v.resource;
-    row.dataset.severity = v.severity;
+    row.dataset.resource  = v.resource;
+    row.dataset.severity  = v.severity;
 
     row.innerHTML = `
       <div class="approval-row-top">
@@ -1186,7 +264,6 @@ function renderApprovalCard(pending) {
     list.appendChild(row);
   });
 
-  // Checkbox toggle -> show/hide the mandatory reason box
   list.querySelectorAll('.approval-checkbox').forEach(cb => {
     cb.addEventListener('change', (e) => {
       const box = document.getElementById('reason-box-' + e.target.dataset.id);
@@ -1194,65 +271,95 @@ function renderApprovalCard(pending) {
     });
   });
 
+  // Reset button to initial state in case a previous run left it green
+  const btn = document.getElementById('submit-decisions-btn');
+  btn.textContent = 'Review & Confirm';
+  btn.style.background = '';
+  btn.disabled = false;
+  btn.onclick = submitDecisions;
+
   document.getElementById('approval-card').classList.remove('hidden');
   document.getElementById('approval-msg').textContent = '';
 }
 
-async function submitDecisions() {
+function submitDecisions() {
   const msgEl = document.getElementById('approval-msg');
   const rows  = document.querySelectorAll('#approval-list .approval-row');
   const approved_ids = [];
   const waivers = [];
 
   for (const row of rows) {
-    const id = row.dataset.id;
+    const id       = row.dataset.id;
     const checkbox = row.querySelector('.approval-checkbox');
     if (checkbox.checked) {
       approved_ids.push(id);
     } else {
       const textarea = row.querySelector('textarea');
-      const reason = textarea.value.trim();
+      const reason   = textarea.value.trim();
       if (!reason) {
         msgEl.textContent = `Please explain why you're skipping ${row.dataset.checkId} before submitting.`;
-        msgEl.className = 'approval-msg error';
+        msgEl.className   = 'approval-msg error';
         textarea.focus();
         return;
       }
       waivers.push({
-        id, check_id: row.dataset.checkId, check_name: row.dataset.checkName,
-        resource: row.dataset.resource, severity: row.dataset.severity, reason,
+        id,
+        check_id:   row.dataset.checkId,
+        check_name: row.dataset.checkName,
+        resource:   row.dataset.resource,
+        severity:   row.dataset.severity,
+        reason,
       });
     }
   }
 
+  // Validation passed — move to confirmation step
+  showDeployConfirmation(approved_ids, waivers);
+}
+
+function showDeployConfirmation(approved_ids, waivers) {
+  const msg = document.getElementById('approval-msg');
   const btn = document.getElementById('submit-decisions-btn');
-  btn.disabled = true;
-  msgEl.textContent = 'Submitting…';
-  msgEl.className = 'approval-msg';
+
+  msg.innerHTML = `
+    <span style="color:var(--text-primary)">
+      <strong>${approved_ids.length}</strong> violation(s) will be remediated &amp; deployed.
+      <strong>${waivers.length}</strong> waived.
+    </span>
+  `;
+  msg.className = 'approval-msg';
+
+  btn.textContent       = '🚀 Approve & Deploy';
+  btn.style.background  = '#3B6D11';
+  btn.disabled          = false;
+  btn.onclick           = () => executeApproval(approved_ids, waivers);
+}
+
+async function executeApproval(approved_ids, waivers) {
+  const msg = document.getElementById('approval-msg');
+  const btn = document.getElementById('submit-decisions-btn');
+  btn.disabled      = true;
+  msg.textContent   = 'Submitting — pipeline resuming…';
+  msg.className     = 'approval-msg';
 
   try {
     const res = await fetch('/api/approve', {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ run_id: currentPendingRunId, approved_ids, waivers }),
+      body:    JSON.stringify({ run_id: currentPendingRunId, approved_ids, waivers }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Submission failed');
 
     lastWaivedIds = waivers.map(w => w.id);
     document.getElementById('approval-card').classList.add('hidden');
-    msgEl.textContent = 'Decisions submitted — pipeline resuming.';
-    msgEl.className = 'approval-msg ok';
-    loadWaiverRuns(); // refresh sidebar so the new waivers show up immediately
+    loadWaiverRuns();
   } catch (e) {
-    msgEl.textContent = e.message;
-    msgEl.className = 'approval-msg error';
-  } finally {
-    btn.disabled = false;
+    msg.textContent = e.message;
+    msg.className   = 'approval-msg error';
+    btn.disabled    = false;
   }
 }
-
-document.getElementById('submit-decisions-btn').addEventListener('click', submitDecisions);
 
 async function pollPendingReview() {
   try {
@@ -1269,10 +376,10 @@ let currentWaiverRunId = null;
 
 async function loadWaiverRuns() {
   try {
-    const res = await fetch('/api/waivers/runs?t=' + Date.now());
+    const res  = await fetch('/api/waivers/runs?t=' + Date.now());
     const data = await res.json();
     const select = document.getElementById('waiver-run-select');
-    const runs = data.runs || [];
+    const runs   = data.runs || [];
 
     if (runs.length === 0) {
       select.innerHTML = '<option value="">No waiver history yet</option>';
@@ -1295,18 +402,12 @@ async function loadWaiverRuns() {
 async function loadWaiverDetail(runId) {
   currentWaiverRunId = runId;
   const listEl = document.getElementById('waiver-list');
-  if (!runId) {
-    listEl.innerHTML = '<div class="waiver-empty">No waivers to show.</div>';
-    return;
-  }
+  if (!runId) { listEl.innerHTML = '<div class="waiver-empty">No waivers to show.</div>'; return; }
 
   try {
     const res = await fetch(`/reports/waivers/${runId}.json?t=` + Date.now());
-    if (!res.ok) {
-      listEl.innerHTML = '<div class="waiver-empty">No waivers to show.</div>';
-      return;
-    }
-    const data = await res.json();
+    if (!res.ok) { listEl.innerHTML = '<div class="waiver-empty">No waivers to show.</div>'; return; }
+    const data    = await res.json();
     const waivers = data.waivers || [];
 
     if (waivers.length === 0) {
@@ -1346,7 +447,7 @@ async function loadWaiverDetail(runId) {
 }
 
 function beginEditWaiver(runId, waiverId) {
-  const reasonEl = document.getElementById(`reason-text-${waiverId}`);
+  const reasonEl  = document.getElementById(`reason-text-${waiverId}`);
   const actionsEl = document.getElementById(`actions-${waiverId}`);
   const currentText = reasonEl.textContent;
 
@@ -1367,9 +468,7 @@ function beginEditWaiver(runId, waiverId) {
       });
       if (!res.ok) throw new Error();
       loadWaiverDetail(runId);
-    } catch (_) {
-      alert('Could not save the updated reason.');
-    }
+    } catch (_) { alert('Could not save the updated reason.'); }
   });
 
   actionsEl.querySelector('[data-action="cancel"]').addEventListener('click', () => {
@@ -1384,9 +483,7 @@ async function confirmDeleteWaiver(runId, waiverId) {
     if (!res.ok) throw new Error();
     loadWaiverDetail(runId);
     loadWaiverRuns();
-  } catch (_) {
-    alert('Could not delete the waiver.');
-  }
+  } catch (_) { alert('Could not delete the waiver.'); }
 }
 
 document.getElementById('waiver-run-select').addEventListener('change', (e) => {
@@ -1406,14 +503,11 @@ async function poll() {
     const res = await fetch('/status.json?t=' + Date.now());
     if (res.ok) {
       const data = await res.json();
-      if (firstPoll && data.stage === 'idle') {
-        await tryLoadLastRun();
-      }
+      if (firstPoll && data.stage === 'idle') await tryLoadLastRun();
       firstPoll = false;
       applyState(data);
     }
   } catch (_) {}
-
   await pollPendingReview();
   updateFooterTime();
 }
@@ -1422,5 +516,3 @@ poll();
 setInterval(poll, POLL_MS);
 setInterval(updateFooterTime, 1000);
 </script>
-</body>
-</html>
